@@ -7,11 +7,12 @@ from sklearn.preprocessing import LabelBinarizer
 from tqdm import tqdm
 from imutils import paths
 
-FILE_PATH = 'ast_dataset/data_final.csv'
-SAVE_PATH = 'ast_dataset/data_final'
-
+FILE_PATH = 'images/'
+SAVE_PATH = 'images/images'
 
 image_paths = list(paths.list_images(FILE_PATH))
+
+print(f'[INFO] Found {len(image_paths)} images')
 
 data = pd.DataFrame()
 

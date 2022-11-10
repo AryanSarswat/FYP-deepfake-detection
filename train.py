@@ -1,5 +1,5 @@
-from DatasetLoader import *
-from Baseline import *
+from DatasetLoader import DataLoaderWrapper
+from Baseline import create_model
 
 import numpy as np
 import pandas as pd
@@ -11,14 +11,17 @@ import torch
 import torch.optim
 import torch.nn as nn
 import albumentations
-
-wandb.init(project="deepfake-baseline")
+from skearn.model_selection import train_test_split
 
 args = {
     "epochs": 10,
     "batch_size": 32,
     "lr": 0.001,
+    "architecture": "EfficientNetV2_s",
+    "optimizer": "Adam",
 }
+
+wandb.init(project="deepfake-baseline", config=args)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -117,6 +120,12 @@ for epoch in range(args['epochs']):
         "Val Loss": val_loss,
         "Val Acc": val_acc,
     })
+    
+print("Training Complete")
+print("Saving Model")
+
+torch.save(model.state_dict(), "efficient_net_baseline.pth")
+
 
 
 
