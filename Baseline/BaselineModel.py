@@ -35,4 +35,8 @@ if __name__ == '__main__':
     model = create_model()
     test = torch.randn(3, 3, 256, 256)
     result = model(test)
+    
+    criterion = nn.BCELoss()
     print(result.shape)
+    
+    print(criterion(result, torch.ones(3, 1)))

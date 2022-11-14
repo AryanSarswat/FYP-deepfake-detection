@@ -1,5 +1,5 @@
-from DatasetLoader import DataLoaderWrapper
-from Baseline import create_model
+from DatasetLoader.ImageDataset import DataLoaderWrapper
+from Baseline.BaselineModel import create_model
 
 import numpy as np
 import pandas as pd
@@ -11,19 +11,26 @@ import torch
 import torch.optim
 import torch.nn as nn
 import albumentations
-from skearn.model_selection import train_test_split
+
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 
 args = {
-    "epochs": 10,
-    "batch_size": 32,
+    "epochs": 20,
+    "batch_size": 128,
     "lr": 0.001,
     "architecture": "EfficientNetV2_s",
     "optimizer": "Adam",
+    "patience" : 5,
+    "weight_decay": 1e-5,
+    "min_delta" : 1e-5
 }
 
-wandb.init(project="deepfake-baseline", config=args)
+wandb.init(project="deepfake-baseline", config=args, name="EfficientNetV2_s")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+print(f"Using device: {device}")
 
 train_transforms = albumentations.Compose([
     albumentations.Resize(256, 256),
@@ -36,9 +43,7 @@ test_transforms = albumentations.Compose([
     albumentations.Normalize(),
 ])
 
-PATH = 'ast_dataset/data_final.csv'
-
-PATH = 'ast_dataset/data_final.csv'
+PATH = 'images/data.csv'
 
 df = pd.read_csv(PATH)
 X = df['image_path'].values
@@ -48,18 +53,20 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train = DataLoaderWrapper(X_train, y_train, transforms=train_transforms, batch_size=args['batch_size'])
-test = DataLoaderWrapper(X_test, y_test, transforms=test_transforms, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, transforms=train_transforms, batch_size=args['batch_size'], shuffle=True)
+test_loader = DataLoaderWrapper(X_test, y_test, transforms=test_transforms, batch_size=args['batch_size'])
 
 def train(model, data_loader, optimizer, criteria, epoch):
     model.train()
     epoch_loss = 0
     epoch_acc = 0
+    epoch_precision = 0
+    epoch_recall = 0
+    epoch_f1 = 0
+    idx = 0
     for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Training", total=len(data_loader)):
         X = X.to(device)
         y = y.to(device)
-        
-        optimizer.zero_grad()
         
         y_pred = model(X)
         
@@ -67,23 +74,41 @@ def train(model, data_loader, optimizer, criteria, epoch):
         epoch_loss += loss.item()
         
         # Append Statistics
-        y_pred = torch.round(y_pred, decimals=0)
-        epoch_acc += (y_pred == y).sum().item()
+        y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
+        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+        
+        y_pred_cpu = y_pred.detach().cpu().numpy()
+        y_cpu = y.detach().cpu().numpy()
+        
+        y_pred_cpu = y_pred_cpu.reshape(-1)
+        y_cpu = y_cpu.reshape(-1)
+            
+        epoch_acc += accuracy_score(y_cpu, y_pred_cpu)
+        epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
+        epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
+        epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
     
-    train_loss = epoch_loss / len(data_loader.dataset)
-    train_acc = epoch_acc / len(data_loader.dataset)
+    train_loss = epoch_loss / (idx + 1)
+    train_acc = epoch_acc / (idx + 1)
+    train_precision = epoch_precision / (idx + 1)
+    train_recall = epoch_recall / (idx + 1)
+    train_f1 = epoch_f1 / (idx + 1)
 
-    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f}")
+    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}")
 
-    return train_loss, train_acc
+    return train_loss, train_acc, train_f1, train_precision, train_recall
 
 def validate(model, data_loader, criteria, epoch):
     model.eval()
     epoch_loss = 0
     epoch_acc = 0
+    epoch_precision = 0
+    epoch_recall = 0
+    epoch_f1 = 0
+    idx = 0
     with torch.no_grad():
         for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation", total=len(data_loader)):
             X = X.to(device)
@@ -94,35 +119,68 @@ def validate(model, data_loader, criteria, epoch):
             loss = criteria(y_pred, y)
             epoch_loss += loss.item()
 
-            # Append Statistics
-            y_pred = torch.round(y_pred, decimals=0)
-            epoch_acc += (y_pred == y).sum().item()
+            y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
+        
+            y_pred_cpu = y_pred.detach().cpu().numpy()
+            y_cpu = y.detach().cpu().numpy()
+            
+            y_pred_cpu = y_pred_cpu.reshape(-1)
+            y_cpu = y_cpu.reshape(-1)
+            
+            epoch_acc += accuracy_score(y_cpu, y_pred_cpu)
+            epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
+            epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
+            epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
 
-    val_loss = epoch_loss / len(data_loader.dataset)
-    val_acc = epoch_acc / len(data_loader.dataset)
+    val_loss = epoch_loss / (idx + 1)
+    val_acc = epoch_acc / (idx + 1)
+    val_precision = epoch_precision / (idx + 1)
+    val_recall = epoch_recall / (idx + 1)
+    val_f1 = epoch_f1 / (idx + 1)
 
-    print(f"Epoch {epoch} Val Loss: {val_loss:.4f} Val Acc: {val_acc:.4f}")
+    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}")
 
-    return val_loss, val_acc
+    return val_loss, val_acc, val_f1, val_precision, val_recall
 
 model = create_model()
+model = model.to(device)
 wandb.watch(model)
 criteria = nn.BCELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'])
+optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
+
+previous_loss = np.inf
+patience = 0
 
 for epoch in range(args['epochs']):
-    train_loss, train_acc = train(model, train, optimizer, criteria, epoch)
-    val_loss, val_acc = validate(model, test, criteria, epoch)
+    train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
+    val_loss, val_acc, val_f1, val_precision, val_recall = validate(model, test_loader, criteria, epoch)
 
     wandb.log({
         "Train Loss": train_loss,
         "Train Acc": train_acc,
+        "Train F1": train_f1,
+        "Train Precision": train_precision,
+        "Train Recall": train_recall,
         "Val Loss": val_loss,
         "Val Acc": val_acc,
+        "Val F1": val_f1,
+        "Val Precision": val_precision,
+        "Val Recall": val_recall
     })
     
-print("Training Complete")
-print("Saving Model")
+    if abs(val_loss - previous_loss) < args['min_delta']:
+        patience += 1
+    else:
+        patience = 0
+    
+    if patience > args["patience"]:
+        print("[INFO] No improvement in Validation loss Early Stopping")
+        break
+    
+    previous_loss = val_loss
+    
+print("[INFO] Training Complete")
+print("[INFO] Saving Model")
 
 torch.save(model.state_dict(), "efficient_net_baseline.pth")
 

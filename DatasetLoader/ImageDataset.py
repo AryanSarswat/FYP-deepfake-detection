@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cv2
 from tqdm import tqdm
 from torch.utils.data import Dataset, DataLoader
+from sklearn.model_selection import train_test_split
 
 class ImageDataset(Dataset):
     def __init__(self, path, labels, transforms=None):
@@ -19,18 +20,18 @@ class ImageDataset(Dataset):
         image = cv2.imread(self.X[idx])
         if self.aug is not None:
             image = self.aug(image=np.array(image))['image']
-        image = np.expand_dims(image, axis=0)
-        image = torch.tensor(image, dtype=torch.float).permute(0, 3, 1, 2)
-        labels = torch.tensor(self.y[idx], dtype=torch.long)
+        image = torch.tensor(image, dtype=torch.float).permute(2, 1, 0)
+        labels = torch.tensor(self.y[idx], dtype=torch.float)
+        labels = torch.unsqueeze(labels, 0)
         return image, labels
     
 class DataLoaderWrapper(DataLoader):
-    def __init__(self, X, y, transforms, batch_size=1, shuffle=False, num_workers=0, pin_memory=False):
+    def __init__(self, X, y, transforms, batch_size=1, shuffle=False):
         dataset = ImageDataset(X, y, transforms=transforms)
-        super().__init__(dataset, batch_size, shuffle, num_workers, pin_memory)
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
 
 if __name__ == "__main__":
-    PATH = 'ast_dataset/data_final.csv'
+    PATH = 'images/data.csv'
 
     df = pd.read_csv(PATH)
     X = df['image_path'].values
@@ -40,8 +41,12 @@ if __name__ == "__main__":
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
     
-    train = DataLoaderWrapper(X_train, y_train, transforms=None)
-    test = DataLoaderWrapper(X_test, y_test, transforms=None)
+    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=3, shuffle=True)
+    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=3, shuffle=True)
+    
+    for idx, (X, y) in enumerate(train):
+        print(X.shape, y.shape)
+        break
     
     print(f"train: {len(train)}, test: {len(test)}")
     
