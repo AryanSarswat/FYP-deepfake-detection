@@ -5,8 +5,8 @@ import os
 from tqdm import tqdm
 from imutils import paths
 
-FILE_PATH = 'images/'
-SAVE_PATH = 'images'
+FILE_PATH = 'ast_dataset/data_final.csv'
+SAVE_PATH = 'ast_dataset/data_final'
 
 image_paths = list(paths.list_images(FILE_PATH))
 
