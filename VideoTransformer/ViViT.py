@@ -8,14 +8,26 @@ from einops.layers.torch import Rearrange
 from layers import TransformerBlock
 
 class Transformer(nn.Module):
-    def __init__(self, dim, depth, head_dims, heads, mlp_dim, dropout=0):
+    """Class for Transformer.
+    """
+    def __init__(self, token_dim, depth, head_dims, heads, mlp_dim, dropout=0):
+        """Constructor for Transformer.
+
+        Args:
+            token_dim (int): Dimension of input tokens
+            depth (int): Number of Transformer Blocks
+            head_dims (int): dimension of each head
+            heads (int): Number of heads for layer
+            mlp_dim (int): Dimension of MLP
+            dropout (int, optional): Dropout probability. Defaults to 0.
+        """
         super().__init__()
         self.depth = depth
         self.layers = nn.ModuleList([])
-        self.norm = nn.LayerNorm(dim)
+        self.norm = nn.LayerNorm(token_dim)
         
         for _ in range(depth):
-            self.layers.append(TransformerBlock(token_dims=dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout))
+            self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout))
         
     def forward(self, x):
         for layer in self.layers:
@@ -28,7 +40,7 @@ class ViViT(nn.Module):
 
 if __name__ == '__main__':
     test = torch.randn(3, 120, 256).cuda()
-    model = Transformer(dim=256, depth=6, head_dims=64, heads=8, mlp_dim=1024).cuda()
+    model = Transformer(token_dim=256, depth=4, head_dims=64, heads=3, mlp_dim=512).cuda()
     pytorch_total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters {pytorch_total_params:,}")
     result = model(test)
