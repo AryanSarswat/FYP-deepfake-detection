@@ -5,8 +5,8 @@ import os
 from tqdm import tqdm
 from imutils import paths
 
-FILE_PATH = 'images/'
-SAVE_PATH = 'images'
+FILE_PATH = 'dfdc/images/'
+SAVE_PATH = 'dfdc/images/'
 
 image_paths = list(paths.list_images(FILE_PATH))
 
@@ -17,7 +17,7 @@ data = pd.DataFrame()
 labels = []
 
 for idx, image_path in tqdm(enumerate(image_paths), desc="Creating dataframe"):
-    label = image_path.split(os.path.sep)[1]
+    label = image_path.split(os.path.sep)[2]
     data.loc[idx, "image_path"] = image_path
     labels.append(label)
 
