@@ -122,7 +122,7 @@ if __name__ == '__main__':
     PATCH_SIZE = 64
     
     test = torch.randn(3, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
-    model = ViViT(num_frames=NUM_FRAMES, patch_size=PATCH_SIZE, in_channels=3, height=HEIGHT, width=WIDTH, num_classes=1).cuda()
+    model = ViViT(num_frames=NUM_FRAMES, patch_size=PATCH_SIZE, in_channels=3, height=HEIGHT, width=WIDTH).cuda()
     pytorch_total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters {pytorch_total_params:,}")
     result = model(test)
