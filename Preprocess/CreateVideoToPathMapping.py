@@ -1,10 +1,9 @@
-import cv2
 from tqdm import tqdm
 import os 
 import pandas as pd
 
-REAL_PATH = ''
-FAKE_PATH = ''
+REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
+FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
 
 TYPES = os.listdir(FAKE_PATH)
 
@@ -23,9 +22,9 @@ FAKE_VIDEOS = get_all_videos(FAKE_PATH)
 df = pd.DataFrame(columns=['video_path', 'label'])
 
 for video in tqdm(REAL_VIDEOS):
-    df = df.append({'video_path': video, 'label': 0}, ignore_index=True)
+    df.loc[len(df)] = [video, 0]
     
 for video in tqdm(FAKE_VIDEOS):
-    df = df.append({'video_path': video, 'label': 1}, ignore_index=True)
+    df.loc[len(df)] = [video, 1]
     
 df.to_csv('videos/data_video.csv', index=False)

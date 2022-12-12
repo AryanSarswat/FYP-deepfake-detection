@@ -4,12 +4,13 @@ import pandas as pd
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
-
+from torchvision import transforms
 
 class VideoDataset(Dataset):
-    def __init__(self, path, labels, transforms=None):
+    def __init__(self, path, labels, num_frames, transforms=None):
         self.X = path
         self.y = labels
+        self.num_frames = num_frames
         self.aug = transforms
         
     def read_video(self, path):
@@ -19,9 +20,10 @@ class VideoDataset(Dataset):
         
         total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
         
-        idxs = np.linspace(0, total_frames, 16, endpoint=False, dtype=np.int)
+        idxs = np.linspace(0, total_frames, num=self.num_frames, endpoint=False, dtype=int)
         
         for idx in idxs:
+            vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
             success, image = vidcap.read()
             
             if not success:
@@ -29,12 +31,14 @@ class VideoDataset(Dataset):
             
             image = cv2.resize(image, (256, 256))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            image = image.astype(np.float32) / 255.
-            image = self.aug(image=image)['image']
+            if self.aug:
+                image = self.aug(image=image)['image']
             frames.append(image)
         
         vidcap.release()
-        return torch.stack(frames)
+        to_tensor = transforms.ToTensor()
+        frames = torch.stack([to_tensor(frame) for frame in frames])
+        return frames
             
         
     def __len__(self):
@@ -44,11 +48,11 @@ class VideoDataset(Dataset):
         video = self.read_video(self.X[idx])
         labels = torch.tensor(self.y[idx], dtype=torch.float)
         labels = torch.unsqueeze(labels, 0)
-        return image, labels
+        return video, labels
     
 class DataLoaderWrapper(DataLoader):
-    def __init__(self, X, y, transforms, batch_size=1, shuffle=False):
-        dataset = VideoDataset(X, y, transforms=transforms)
+    def __init__(self, X, y, transforms, stride=128, batch_size=1, shuffle=False):
+        dataset = VideoDataset(X, y, stride, transforms=transforms)
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
 
 if __name__ == "__main__":
@@ -62,11 +66,13 @@ if __name__ == "__main__":
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
     
-    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=3, shuffle=True)
-    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=3, shuffle=True)
+    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=2, shuffle=True)
+    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=2, shuffle=True)
     
     for idx, (X, y) in enumerate(train):
-        print(X.shape, y.shape)
+        print(f"Shape of input {X.shape}, Shape of label {y.shape}")
+        print(f"Type of input {X.dtype}, Type of label {y.dtype}")
+        print(f"Min of input {X.min()}, Max of input {X.max()}")
         break
     
     print(f"train: {len(train)}, test: {len(test)}")
