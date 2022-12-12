@@ -52,7 +52,7 @@ class DataLoaderWrapper(DataLoader):
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
 
 if __name__ == "__main__":
-    PATH = 'images/data_video.csv'
+    PATH = 'videos/data_video.csv'
 
     df = pd.read_csv(PATH)
     X = df['video_path'].values
