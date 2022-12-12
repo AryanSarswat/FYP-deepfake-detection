@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock
+from .layers import TransformerBlock
 from torch import nn
 
 
@@ -111,12 +111,13 @@ class ViViT(nn.Module):
         
         return self.classifier(x)
         
-        
+def create_model(num_frames, patch_size, in_channels, height, width, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+    return ViViT(num_frames, patch_size, in_channels, height, width, dim, depth, heads, head_dims, dropout, scale_dim)
         
         
 if __name__ == '__main__':
-    HEIGHT = 512
-    WIDTH = 512
+    HEIGHT = 256
+    WIDTH = 256
     NUM_FRAMES = 128
     PATCH_SIZE = 64
     
