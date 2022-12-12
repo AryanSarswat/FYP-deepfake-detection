@@ -1,11 +1,10 @@
 import torch
-from torch import nn
 import torch.nn.functional as F
-
-from einops import rearrange, repeat, einsum
+from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-
 from layers import TransformerBlock
+from torch import nn
+
 
 class Transformer(nn.Module):
     """Class for Transformer.
