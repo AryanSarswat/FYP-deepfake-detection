@@ -16,8 +16,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 
 args = {
-    "epochs": 20,
-    "batch_size": 8,
+    "epochs": 50,
+    "batch_size": 16,
     "lr": 0.001,
     "architecture": "ViVIT",
     "optimizer": "Adam",
@@ -35,7 +35,6 @@ print(f"Using device: {device}")
 train_transforms = albumentations.Compose([
     albumentations.Resize(256, 256),
     albumentations.Normalize(),
-    albumentations.HorizontalFlip(p=0.5),
 ])
 
 test_transforms = albumentations.Compose([
@@ -142,8 +141,12 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(128, 32, 3, 256, 256)
+model = create_model(num_frames=128, patch_size=32, in_channels=3, height=256, width=256, dim=256, depth=6, heads=6)
 model = model.to(device)
+
+num_parameters = sum(p.numel() for p in model.parameters())
+print(f"[INFO] Number of parameters in model : {num_parameters:,}")
+
 wandb.watch(model)
 criteria = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
@@ -151,39 +154,45 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=arg
 previous_loss = np.inf
 patience = 0
 
-for epoch in range(args['epochs']):
-    train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
-    val_loss, val_acc, val_f1, val_precision, val_recall = validate(model, test_loader, criteria, epoch)
+try:
+    for epoch in range(args['epochs']):
+        train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
+        val_loss, val_acc, val_f1, val_precision, val_recall = validate(model, test_loader, criteria, epoch)
 
-    wandb.log({
-        "Train Loss": train_loss,
-        "Train Acc": train_acc,
-        "Train F1": train_f1,
-        "Train Precision": train_precision,
-        "Train Recall": train_recall,
-        "Val Loss": val_loss,
-        "Val Acc": val_acc,
-        "Val F1": val_f1,
-        "Val Precision": val_precision,
-        "Val Recall": val_recall
-    })
-    
-    if abs(val_loss - previous_loss) < args['min_delta']:
-        patience += 1
-    else:
-        patience = 0
-    
-    if patience > args["patience"]:
-        print("[INFO] No improvement in Validation loss Early Stopping")
+        wandb.log({
+            "Train Loss": train_loss,
+            "Train Acc": train_acc,
+            "Train F1": train_f1,
+            "Train Precision": train_precision,
+            "Train Recall": train_recall,
+            "Val Loss": val_loss,
+            "Val Acc": val_acc,
+            "Val F1": val_f1,
+            "Val Precision": val_precision,
+            "Val Recall": val_recall
+        })
+        
+        if abs(val_loss - previous_loss) < args['min_delta']:
+            patience += 1
+        else:
+            patience = 0
+        
+        if patience > args["patience"]:
+            print("[INFO] No improvement in Validation loss Early Stopping")
+            break
+        
+        previous_loss = val_loss
         break
+except KeyboardInterrupt:
+    print("[INFO] Training Interrupted")
+    print("[INFO] Saving Model")
+    torch.save(model.state_dict(), "ViVIT.pth")
     
-    previous_loss = val_loss
-    break
     
 print("[INFO] Training Complete")
 print("[INFO] Saving Model")
 
-torch.save(model.state_dict(), "efficient_net_baseline.pth")
+torch.save(model.state_dict(), "ViVIT.pth")
 
 
 
