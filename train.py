@@ -1,5 +1,5 @@
-from DatasetLoader.ImageDataset import DataLoaderWrapper
-from Baseline.BaselineModel import create_model
+from DatasetLoader.VideoDataset import DataLoaderWrapper
+from VideoTransformer.ViViT import create_model
 
 import numpy as np
 import pandas as pd
@@ -17,16 +17,16 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 args = {
     "epochs": 20,
-    "batch_size": 128,
+    "batch_size": 8,
     "lr": 0.001,
-    "architecture": "EfficientNetV2_s",
+    "architecture": "ViVIT",
     "optimizer": "Adam",
     "patience" : 5,
     "weight_decay": 1e-5,
     "min_delta" : 1e-5
 }
 
-wandb.init(project="deepfake-baseline", config=args, name="EfficientNetV2_s")
+wandb.init(project="deepfake-baseline", config=args, name="ViVIT")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -43,10 +43,10 @@ test_transforms = albumentations.Compose([
     albumentations.Normalize(),
 ])
 
-PATH = 'images/data.csv'
+PATH = 'videos/data_video.csv'
 
 df = pd.read_csv(PATH)
-X = df['image_path'].values
+X = df['video_path'].values
 y = df['label'].values
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
@@ -142,7 +142,7 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model()
+model = create_model(128, 32, 3, 256, 256)
 model = model.to(device)
 wandb.watch(model)
 criteria = nn.BCELoss()
@@ -178,6 +178,7 @@ for epoch in range(args['epochs']):
         break
     
     previous_loss = val_loss
+    break
     
 print("[INFO] Training Complete")
 print("[INFO] Saving Model")
