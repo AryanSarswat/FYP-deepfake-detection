@@ -2,17 +2,16 @@ from tqdm import tqdm
 import os 
 import pandas as pd
 
-REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
-FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
+REAL_PATH = 'videos/real/'
+FAKE_PATH = 'videos/fake/'
 
 TYPES = os.listdir(FAKE_PATH)
 
 def get_all_videos(path):
     video_paths = []
     for dirpath, dirnames, filenames in os.walk(path):
-        for filename in filenames:
-            if filename.endswith('.mp4'):
-                video_paths.append(os.path.join(dirpath, filename))
+        for dirname in dirnames:
+            video_paths.append(os.path.join(dirpath, dirname))
     
     return video_paths
 

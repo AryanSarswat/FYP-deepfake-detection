@@ -1,4 +1,5 @@
 import cv2
+import os
 import numpy as np
 from tqdm import tqdm
 
@@ -6,11 +7,20 @@ REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
 FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
 DEST_PATH = 'videos/'
 
-def preprocess(path):
-    for dirpath, dirnames, filenames in os.walk(path):
-        for filename in tqdm(filenames):
-            if filename.endswith('.mp4'):
-                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(DEST_PATH, filename))
+def preprocess(path, isReal=True):
+    if isReal:
+        dest_path = os.path.join(DEST_PATH, 'real')
+    else:
+        dest_path = os.path.join(DEST_PATH, 'fake')
+        
+    if not os.path.exists(dest_path):
+        os.makedirs(dest_path)
+    
+    num_dir = len(os.listdir(path))
+    for dirpath, dirnames, filenames in tqdm(os.walk(path), total=num_dir):
+        for filename in filenames:
+            if filename.endswith('.mp4'):                              
+                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename))
                 break
 
 def convert_video_to_images(src_path, dest_path, num_frames=64):
@@ -20,16 +30,18 @@ def convert_video_to_images(src_path, dest_path, num_frames=64):
     
     idxs = np.linspace(0, total_frames, num=num_frames, endpoint=False, dtype=int)
     
-    for idx in idxs:
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+    dest_path = dest_path.replace('.mp4', '')
+    os.makedirs(dest_path, exist_ok=True)
+    
+    for idx, frame_num in enumerate(idxs):
+        vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         success, image = vidcap.read()
         
         if not success:
             break
         
         image = cv2.resize(image, (256, 256))
-        
-        
+
         path_to_save = os.path.join(dest_path, f'{idx}.jpg')
         cv2.imwrite(path_to_save, image)
         
@@ -38,5 +50,5 @@ if __name__ == "__main__":
     print("[INFO] Preprocessing real videos...")
     preprocess(REAL_PATH)
     print("[INFO] Preprocessing fake videos...")
-    preprocess(FAKE_PATH)
+    preprocess(FAKE_PATH, isReal=False)
         

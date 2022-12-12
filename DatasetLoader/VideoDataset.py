@@ -16,26 +16,13 @@ class VideoDataset(Dataset):
     def read_video(self, path):
         frames = []
         
-        vidcap = cv2.VideoCapture(path)
+        files = os.listdir(path)
         
-        total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
+        for file in files:
+            frame = cv2.imread(os.path.join(path, file))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frames.append(frame)
         
-        idxs = np.linspace(0, total_frames, num=self.num_frames, endpoint=False, dtype=int)
-        
-        for idx in idxs:
-            vidcap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            success, image = vidcap.read()
-            
-            if not success:
-                break
-            
-            image = cv2.resize(image, (256, 256))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            if self.aug:
-                image = self.aug(image=image)['image']
-            frames.append(image)
-        
-        vidcap.release()
         to_tensor = transforms.ToTensor()
         frames = torch.stack([to_tensor(frame) for frame in frames])
         return frames
