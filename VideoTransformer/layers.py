@@ -3,6 +3,7 @@ import torch.nn.functional as F
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
+from torchsummary import summary
 
 
 class MHSA(nn.Module):
@@ -69,18 +70,19 @@ class TransformerBlock(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(token_dims, mlp_dims),
             nn.GELU(),
-            nn.Linear(mlp_dims, token_dims))
+            nn.Dropout(dropout),
+            nn.Linear(mlp_dims, token_dims),
+            nn.Dropout(dropout)
+        )
         
     def forward(self, x):
-        attended = self.attention(x)
-        out = self.norm1(x + attended)
-        out = self.norm2(out + self.mlp(out))
+        out = x + self.attention(self.norm1(x))
+        out = x + self.mlp(self.norm2(out))
         return out
         
 if __name__ == '__main__':
     model = TransformerBlock(128, 128, 32)
-    pytorch_total_params = sum(p.numel() for p in model.parameters())
-    print(f"Total number of parameters {pytorch_total_params:,}")
+    print(summary(model, (32, 128), device='cpu'))
     test = torch.randn(2, 32, 128)
     result = model(test)
     print("Shape after Transformer block",result.shape)

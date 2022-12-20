@@ -21,9 +21,8 @@ def preprocess(path, isReal=True):
         for filename in filenames:
             if filename.endswith('.mp4'):                              
                 convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename))
-                break
 
-def convert_video_to_images(src_path, dest_path, num_frames=64):
+def convert_video_to_images(src_path, dest_path, num_frames=32):
     vidcap = cv2.VideoCapture(src_path)
     
     total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -47,8 +46,8 @@ def convert_video_to_images(src_path, dest_path, num_frames=64):
         
         
 if __name__ == "__main__":
-    print("[INFO] Preprocessing real videos...")
-    preprocess(REAL_PATH)
+    #print("[INFO] Preprocessing real videos...")
+    #preprocess(REAL_PATH)
     print("[INFO] Preprocessing fake videos...")
     preprocess(FAKE_PATH, isReal=False)
         

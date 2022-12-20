@@ -1,8 +1,9 @@
 import torch
 import torch.nn.functional as F
+from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from .layers import TransformerBlock
+from layers import TransformerBlock
 from torch import nn
 
 
@@ -70,7 +71,6 @@ class ViViT(nn.Module):
         self.spatial_token = nn.Parameter(torch.randn(1, 1, dim))
         self.spatial_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout)
         
-        
         self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
         self.temporal_token = nn.Parameter(torch.randn(1, 1, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout)
@@ -118,13 +118,12 @@ def create_model(num_frames, patch_size, in_channels, height, width, dim=192, de
 if __name__ == '__main__':
     HEIGHT = 256
     WIDTH = 256
-    NUM_FRAMES = 128
-    PATCH_SIZE = 64
+    NUM_FRAMES = 32
+    PATCH_SIZE = 16
     
     test = torch.randn(3, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
-    model = ViViT(num_frames=NUM_FRAMES, patch_size=PATCH_SIZE, in_channels=3, height=HEIGHT, width=WIDTH).cuda()
-    pytorch_total_params = sum(p.numel() for p in model.parameters())
-    print(f"Total number of parameters {pytorch_total_params:,}")
+    model = ViViT(num_frames=NUM_FRAMES, patch_size=PATCH_SIZE, in_channels=3, height=HEIGHT, width=WIDTH, dim=256, depth=8, heads=6, head_dims=128).cuda()
+    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH)))
     result = model(test)
     print(result.shape)
     print(result)

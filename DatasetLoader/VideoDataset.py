@@ -5,6 +5,8 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+import os
+from tqdm import tqdm
 
 class VideoDataset(Dataset):
     def __init__(self, path, labels, num_frames, transforms=None):
@@ -17,14 +19,16 @@ class VideoDataset(Dataset):
         frames = []
         
         files = os.listdir(path)
-        
         for file in files:
             frame = cv2.imread(os.path.join(path, file))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             frames.append(frame)
         
         to_tensor = transforms.ToTensor()
-        frames = torch.stack([to_tensor(frame) for frame in frames])
+        try:
+            frames = torch.stack([to_tensor(frame) for frame in frames])
+        except:
+            print(f"[INFO] Failed run: {path}")
         return frames
             
         
@@ -53,14 +57,18 @@ if __name__ == "__main__":
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
     
-    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=2, shuffle=True)
-    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=2, shuffle=True)
+    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=128, shuffle=True)
+    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=128, shuffle=True)
     
-    for idx, (X, y) in enumerate(train):
-        print(f"Shape of input {X.shape}, Shape of label {y.shape}")
-        print(f"Type of input {X.dtype}, Type of label {y.dtype}")
-        print(f"Min of input {X.min()}, Max of input {X.max()}")
+    for idx, (X_sample, y_sample) in tqdm(enumerate(train), total=len(train)):
+        print(X_sample.shape)
         break
     
+    print(df.head())
+
+    for path in tqdm(X):
+        num_frames = len(os.listdir(path))
+        if (num_frames != 32):
+            print(f"[ERROR] Path {path} does not have 32 frames exactly")
     print(f"train: {len(train)}, test: {len(test)}")
     

@@ -17,13 +17,14 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 args = {
     "epochs": 50,
-    "batch_size": 16,
-    "lr": 0.001,
+    "batch_size": 32, 
+    "num_frames" : 32,
     "architecture": "ViVIT",
     "optimizer": "Adam",
     "patience" : 5,
+    "lr" : 1e-3,
     "weight_decay": 1e-5,
-    "min_delta" : 1e-5
+    "min_delta" : 1e-3
 }
 
 wandb.init(project="deepfake-baseline", config=args, name="ViVIT")
@@ -141,7 +142,7 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=128, patch_size=32, in_channels=3, height=256, width=256, dim=256, depth=6, heads=6)
+model = create_model(num_frames=args['num_frames'], patch_size=16, in_channels=3, height=256, width=256, dim=256, depth=8, heads=6, head_dims=128, dropout=0.1)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
@@ -182,9 +183,9 @@ try:
             break
         
         previous_loss = val_loss
-        break
+        print(f"[INFO] Number of times loss has not improved : {patience}")
 except KeyboardInterrupt:
-    print("[INFO] Training Interrupted")
+    print("[ERROR] Training Interrupted")
     print("[INFO] Saving Model")
     torch.save(model.state_dict(), "ViVIT.pth")
     
