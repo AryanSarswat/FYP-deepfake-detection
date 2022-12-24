@@ -17,17 +17,17 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 args = {
     "epochs": 50,
-    "batch_size": 32, 
+    "batch_size": 16, 
     "num_frames" : 32,
     "architecture": "ViVIT",
     "optimizer": "Adam",
     "patience" : 5,
-    "lr" : 1e-3,
+    "lr" : 1e-4,
     "weight_decay": 1e-5,
     "min_delta" : 1e-3
 }
 
-wandb.init(project="deepfake-baseline", config=args, name="ViVIT")
+wandb.init(project="deepfake-baseline", config=args, name="ViVIT_Prenorm_21M")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -53,8 +53,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, transforms=train_transforms, batch_size=args['batch_size'], shuffle=True)
-test_loader = DataLoaderWrapper(X_test, y_test, transforms=test_transforms, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'], shuffle=True)
+test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'])
 
 def train(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -142,7 +142,7 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args['num_frames'], patch_size=16, in_channels=3, height=256, width=256, dim=256, depth=8, heads=6, head_dims=128, dropout=0.1)
+model = create_model(num_frames=args['num_frames'], patch_size=16, in_channels=3, height=256, width=256, dim=256, depth=8, heads=6, head_dims=128, dropout=0.2)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
@@ -159,19 +159,22 @@ try:
     for epoch in range(args['epochs']):
         train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
         val_loss, val_acc, val_f1, val_precision, val_recall = validate(model, test_loader, criteria, epoch)
-
-        wandb.log({
-            "Train Loss": train_loss,
-            "Train Acc": train_acc,
-            "Train F1": train_f1,
-            "Train Precision": train_precision,
-            "Train Recall": train_recall,
-            "Val Loss": val_loss,
-            "Val Acc": val_acc,
-            "Val F1": val_f1,
-            "Val Precision": val_precision,
-            "Val Recall": val_recall
-        })
+        
+        try:
+            wandb.log({
+                "Train Loss": train_loss,
+                "Train Acc": train_acc,
+                "Train F1": train_f1,
+                "Train Precision": train_precision,
+                "Train Recall": train_recall,
+                "Val Loss": val_loss,
+                "Val Acc": val_acc,
+                "Val F1": val_f1,
+                "Val Precision": val_precision,
+                "Val Recall": val_recall
+            })
+        except:
+            print("[ERROR] Could not upload data, temporary connection")
         
         if abs(val_loss - previous_loss) < args['min_delta']:
             patience += 1

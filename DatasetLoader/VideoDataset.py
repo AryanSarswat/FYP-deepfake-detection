@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 import os
 from tqdm import tqdm
+import albumentations
 
 class VideoDataset(Dataset):
     def __init__(self, path, labels, num_frames, transforms=None):
@@ -22,13 +23,12 @@ class VideoDataset(Dataset):
         for file in files:
             frame = cv2.imread(os.path.join(path, file))
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            frame = frame.transpose(2,0,1)
+            frame = frame / 255
+            frame = torch.tensor(frame, dtype=torch.float)
             frames.append(frame)
         
-        to_tensor = transforms.ToTensor()
-        try:
-            frames = torch.stack([to_tensor(frame) for frame in frames])
-        except:
-            print(f"[INFO] Failed run: {path}")
+        frames = torch.stack(frames)
         return frames
             
         
@@ -56,12 +56,21 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
-    
-    train = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=128, shuffle=True)
-    test = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=128, shuffle=True)
+   
+    transforms = albumentations.Compose([
+        albumentations.Resize(256,256),
+        albumentations.Normalize(),
+    ])
+
+    train = DataLoaderWrapper(X_train, y_train, transforms=transforms, batch_size=128, shuffle=True)
+    test = DataLoaderWrapper(X_test, y_test, transforms=transforms, batch_size=128, shuffle=True)
     
     for idx, (X_sample, y_sample) in tqdm(enumerate(train), total=len(train)):
-        print(X_sample.shape)
+        print(f"[INFO] Shape of training data : {X_sample.shape}")
+        print(f"[INFO] Min of training data : {torch.min(X_sample)}")
+        print(f"[INFO] Max of training data : {torch.max(X_sample)}")
+        print(f"[INFO] Training data type : {X_sample.dtype}")
+        print(f"[INFO] Training label type : {y_sample.dtype}")
         break
     
     print(df.head())

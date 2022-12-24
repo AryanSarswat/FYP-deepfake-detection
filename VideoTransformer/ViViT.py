@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock
+from .layers import TransformerBlock
 from torch import nn
 
 
