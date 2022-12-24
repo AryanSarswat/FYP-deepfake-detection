@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-
+from torchsummary import summary
 
 class ClassiferModule(nn.Module):
     def __init__(self):
@@ -20,8 +20,7 @@ class ClassiferModule(nn.Module):
 def create_model():
     model = torchvision.models.efficientnet_v2_s()
     model.classifier = ClassiferModule()
-    num_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f'{num_parameters:,} total parameters.')
+    print(summary(model, (3, 256, 256), device='cpu'))    
     return model
 
 def load_model(path):

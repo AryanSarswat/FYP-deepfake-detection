@@ -79,9 +79,71 @@ class TransformerBlock(nn.Module):
         out = x + self.mlp(self.norm2(out))
         return out
         
+class SqeezeExcitation(nn.Module):
+    def __init__(self, in_dims, out_dims, reduction=4):
+        super(SqeezeExcitation, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Sequential(
+            nn.Linear(out_dims, in_dims // reduction),
+            nn.SiLU(),
+            nn.Linear(in_dims // reduction, out_dims),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.avg_pool(x).view(b, c)
+        y = self.fc(y).view(b, c, 1, 1)
+        return x * y
+    
+class MBConvBlock(nn.Module):
+    def __init__(self, in_dims, out_dims, stride, expansion_factor, se, reduction=4):
+        super(MBConvBlock, self).__init__()
+        assert stride in [1, 2]
+        
+        self.identity = (in_dims == out_dims) and (stride == 1)
+        
+        hidden_dim = round(in_dims * expansion_factor)
+        if se:
+            self.conv = nn.Sequential(
+                nn.Conv2d(in_dims, hidden_dim, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.SiLU(),
+                
+                nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=stride, padding=1, groups=hidden_dim, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.SiLU(),
+                SqeezeExcitation(in_dims, hidden_dim, reduction=reduction),
+                
+                nn.Conv2d(hidden_dim, out_dims, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(out_dims),
+            )
+        else:
+            self.conv = nn.Sequential(
+                nn.Conv2d(in_dims, hidden_dim, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(hidden_dim),
+                nn.SiLU(),
+                
+                nn.Conv2d(hidden_dim, out_dims, kernel_size=1, stride=1, padding=0, bias=False),
+                nn.BatchNorm2d(out_dims),
+            )
+    
+    def forward(self, x):
+        if self.identity:
+            return x + self.conv(x)
+        else:
+            return self.conv(x)
+            
+
+
 if __name__ == '__main__':
-    model = TransformerBlock(128, 128, 32)
-    print(summary(model, (32, 128), device='cpu'))
-    test = torch.randn(1, 32, 128)
-    result = model(test)
-    print("Shape after Transformer block",result.shape)
+    inp = torch.randn(32, 3, 224, 224)
+    
+    mb = MBConvBlock(in_dims=3, out_dims=16, stride=1, expansion_factor=1, se=True)
+    tf = TransformerBlock(token_dims=224*224, mlp_dims=16, head_dims=16, heads=8)
+    
+    x = mb(inp)
+    print(f"Shape of x after MBConvBlock: {x.shape}")
+    x = x.view(x.shape[0], x.shape[1], -1)
+    x = tf(x)
+    print(f"Shape of x after TransformerBlock: {x.shape}")
