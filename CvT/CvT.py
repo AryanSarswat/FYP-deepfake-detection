@@ -99,7 +99,6 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
         
         x = self.features(x)
-        print(x.shape)
         x = self.conv_out(x)
         
         # Unfold time from batch dimension
@@ -139,9 +138,10 @@ if __name__ == '__main__':
         [1, 256,  2, 2, 1],
     ]
     
-    test = torch.randn(3, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
+    test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH)
     
-    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0).cuda()
+    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0)
     result = model(test)
     print(f"Shape of output : {result.shape}")
-    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH)))
+    print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print(model)
