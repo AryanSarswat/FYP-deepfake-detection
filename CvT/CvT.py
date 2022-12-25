@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock, MBConvBlock
+from .layers import TransformerBlock, MBConvBlock
 from torch import nn
 
 
@@ -131,11 +131,11 @@ if __name__ == '__main__':
     
     effnetv2_s = [
         [1,  24,  1, 1, 0],
-        [1,  48,  1, 2, 0],
-        [1,  64,  1, 2, 0],
-        [1, 128,  2, 2, 1],
-        [1, 160,  2, 1, 1],
-        [1, 256,  2, 2, 1],
+        [4,  48,  1, 2, 0],
+        [4,  64,  1, 2, 0],
+        [4, 128,  2, 2, 1],
+        [6, 160,  2, 1, 1],
+        [6, 256,  2, 2, 1],
     ]
     
     test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH)
@@ -143,5 +143,5 @@ if __name__ == '__main__':
     model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0)
     result = model(test)
     print(f"Shape of output : {result.shape}")
-    print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
-    print(model)
+    print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cpu'))
