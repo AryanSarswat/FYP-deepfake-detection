@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock, CNNBlock, InvertedResidualBlock
+from .layers import TransformerBlock, MBConvBlock
 from torch import nn
 from math import ceil
 
@@ -145,4 +145,5 @@ if __name__ == '__main__':
     model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s)
     result = model(test)
     print(f"Shape of output : {result.shape}")
-    print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
+    print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cpu'))

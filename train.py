@@ -1,5 +1,5 @@
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from VideoTransformer.ViViT import create_model
+from CvT.CvT import create_model
 
 import numpy as np
 import pandas as pd
@@ -17,9 +17,9 @@ from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_sc
 
 args = {
     "epochs": 50,
-    "batch_size": 16, 
+    "batch_size": 1, 
     "num_frames" : 32,
-    "architecture": "ViVIT",
+    "architecture": "CvT",
     "optimizer": "Adam",
     "patience" : 5,
     "lr" : 1e-4,
@@ -27,19 +27,17 @@ args = {
     "min_delta" : 1e-3
 }
 
-wandb.init(project="deepfake-baseline", config=args, name="ViVIT_Prenorm_21M")
+wandb.init(project="deepfake-baseline", config=args, name="CvT")
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 print(f"Using device: {device}")
 
 train_transforms = albumentations.Compose([
-    albumentations.Resize(256, 256),
     albumentations.Normalize(),
 ])
 
 test_transforms = albumentations.Compose([
-    albumentations.Resize(256, 256),
     albumentations.Normalize(),
 ])
 
@@ -142,13 +140,21 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args['num_frames'], patch_size=16, in_channels=3, height=256, width=256, dim=256, depth=8, heads=6, head_dims=128, dropout=0.2)
+effnetv2_s = [
+        [1,  24,  2, 1, 0],
+        [1,  48,  4, 2, 0],
+        [1,  64,  4, 2, 0],
+        [1, 128,  6, 1, 1],
+        [1, 256,  6, 2, 1],
+]
+
+model = create_model(num_frames=args["num_frames"], in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+#wandb.watch(model)
 criteria = nn.BCELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
 
@@ -190,13 +196,13 @@ try:
 except KeyboardInterrupt:
     print("[ERROR] Training Interrupted")
     print("[INFO] Saving Model")
-    torch.save(model.state_dict(), "ViVIT.pth")
+    torch.save(model.state_dict(), "CvT.pth")
     
     
 print("[INFO] Training Complete")
 print("[INFO] Saving Model")
 
-torch.save(model.state_dict(), "ViVIT.pth")
+torch.save(model.state_dict(), "CvT.pth")
 
 
 
