@@ -149,7 +149,7 @@ class InvertedResidualBlock(nn.Module):
             self.reduced_dims = 1
         
         if self.expand:
-            self.expand_conv = CNNBlock(in_dims, self.hidden_dims, kernel_size=3, stride=1, padding=1)
+            self.expand_conv = CNNBlock(in_dims, self.hidden_dims, kernel_size=1, stride=1, padding=0)
 
         self.conv = nn.Sequential(
             CNNBlock(self.hidden_dims, self.hidden_dims, kernel_size=kernel_size, stride=stride, padding=padding, groups=self.hidden_dims),
@@ -175,10 +175,10 @@ class InvertedResidualBlock(nn.Module):
             return self.conv(x)
 
 if __name__ == '__main__':
-    inp = torch.randn(32, 3, 256, 256)
+    inp = torch.randn(32, 3, 224, 224)
     
     mb = InvertedResidualBlock(in_dims=3, out_dims=24, kernel_size=3, stride=1, padding=1, expand_ratio=4)
-    tf = TransformerBlock(token_dims=256*256, mlp_dims=16, head_dims=16, heads=8)
+    tf = TransformerBlock(token_dims=224*224, mlp_dims=16, head_dims=16, heads=8)
     
     x = mb(inp)
     print(f"Shape of x after MBConvBlock: {x.shape}")

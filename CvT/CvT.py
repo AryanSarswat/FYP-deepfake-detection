@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from .layers import TransformerBlock, MBConvBlock
+from layers import TransformerBlock, CNNBlock, InvertedResidualBlock
 from torch import nn
 from math import ceil
 
@@ -132,18 +132,17 @@ if __name__ == '__main__':
     
     effnetv2_s = [
         [1, 16, 1, 1, 3],
-        [6, 24, 2, 2, 3],
-        [6, 40, 2, 2, 5],
-        [6, 80, 3, 2, 3],
+        [6, 24, 2, 1, 3],
+        [6, 40, 2, 1, 5],
+        [6, 80, 3, 1, 3],
         [6, 112, 3, 1, 5],
-        [6, 192, 4, 2, 5],
-        [6, 320, 1, 1, 3],
+        [6, 192, 4, 1, 5],
     ]
     
-    test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH)
+    test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
     
-    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s)
+    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s).cuda()
     result = model(test)
     print(f"Shape of output : {result.shape}")
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cpu'))
+    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cuda'))
