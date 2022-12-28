@@ -140,15 +140,7 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-effnetv2_s = [
-        [1,  24,  2, 1, 0],
-        [1,  48,  4, 2, 0],
-        [1,  64,  4, 2, 0],
-        [1, 128,  6, 1, 1],
-        [1, 256,  6, 2, 1],
-]
-
-model = create_model(num_frames=args["num_frames"], in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0)
+model = create_model(num_frames=args["num_frames"], dim=512, depth=6, heads=6, head_dims=128, dropout=0.2, scale_dim=4)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
