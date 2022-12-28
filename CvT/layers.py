@@ -79,68 +79,106 @@ class TransformerBlock(nn.Module):
         out = x + self.mlp(self.norm2(out))
         return out
         
-class SqeezeExcitation(nn.Module):
-    def __init__(self, in_dims, out_dims, reduction=4):
-        super(SqeezeExcitation, self).__init__()
-        self.avg_pool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(
-            nn.Linear(out_dims, in_dims // reduction),
+class SqueezeExcitation(nn.Module):
+    def __init__(self, in_dims, reduced_dims):
+        """
+        Constructor for Squeeze Excitation Layer.
+
+        Args:
+            in_dims (int): Number of input channels
+            reduced_dims (int): Number of hidden channels
+        """        
+        super(SqueezeExcitation, self).__init__()
+        self.se = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            nn.Conv2d(in_dims, reduced_dims, kernel_size=1, stride=1, padding=0, bias=True),
             nn.SiLU(),
-            nn.Linear(in_dims // reduction, out_dims),
+            nn.Conv2d(reduced_dims, in_dims, kernel_size=1, stride=1, padding=0, bias=True),
             nn.Sigmoid()
         )
     
     def forward(self, x):
-        b, c, _, _ = x.size()
-        y = self.avg_pool(x).view(b, c)
-        y = self.fc(y).view(b, c, 1, 1)
-        return x * y
+        attn = self.se(x)
+        return x * attn
     
-class MBConvBlock(nn.Module):
-    def __init__(self, in_dims, out_dims, stride, expansion_factor, se, reduction=4):
-        super(MBConvBlock, self).__init__()
-        assert stride in [1, 2]
-        
-        self.identity = (in_dims == out_dims) and (stride == 1)
-        
-        hidden_dim = round(in_dims * expansion_factor)
-        if se:
-            self.conv = nn.Sequential(
-                nn.Conv2d(in_dims, hidden_dim, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
-                
-                nn.Conv2d(hidden_dim, hidden_dim, kernel_size=3, stride=stride, padding=1, groups=hidden_dim, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
-                SqeezeExcitation(in_dims, hidden_dim, reduction=reduction),
-                
-                nn.Conv2d(hidden_dim, out_dims, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(out_dims),
-            )
-        else:
-            self.conv = nn.Sequential(
-                nn.Conv2d(in_dims, hidden_dim, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(hidden_dim),
-                nn.SiLU(),
-                
-                nn.Conv2d(hidden_dim, out_dims, kernel_size=1, stride=1, padding=0, bias=False),
-                nn.BatchNorm2d(out_dims),
-            )
+class CNNBlock(nn.Module):
+    def __init__(self, in_dims, out_dims, kernel_size, stride, padding, groups=1):
+        """
+        Constructor for CNN Block.
+
+        Args:
+            in_dims (int): Number of input channels
+            out_dims (int): Number of output channels
+            kernel_size (int): kernel size
+            stride (int): stride
+            padding (int): padding
+            groups (int, optional): _description_. Defaults to 1.
+        """
+        super(CNNBlock, self).__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(in_dims, out_dims, kernel_size=kernel_size, stride=stride, padding=padding, groups=groups, bias=False),
+            nn.BatchNorm2d(out_dims),
+            nn.SiLU()
+        )
     
     def forward(self, x):
-        if self.identity:
-            return x + self.conv(x)
+        return self.cnn(x)
+
+class InvertedResidualBlock(nn.Module):
+    def __init__(self, in_dims, out_dims, kernel_size, stride, padding, expand_ratio, reduction=4, survival_prob=0.8):
+        """
+        Constructor for Inverted Residual Block.
+
+        Args:
+            in_dims (int): Number of input channels
+            out_dims (int): Number of output channels
+            kernel_size (int): kernel size
+            stride (int): stride
+            padding (int): padding
+            expand_ratio (int): Expansion ratio
+            reduction (int, optional): Reduction ratio. Defaults to 4.
+            survival_prob (float, optional): Stochastic depth probability. Defaults to 0.8.
+        """
+        super(InvertedResidualBlock, self).__init__()
+        self.survival_prob = survival_prob
+        self.use_residual = in_dims == out_dims and stride == 1
+        self.hidden_dims = in_dims * expand_ratio
+        self.expand = in_dims != self.hidden_dims
+        self.reduced_dims = int(in_dims / reduction) 
+        if self.reduced_dims < 1:
+            self.reduced_dims = 1
+        
+        if self.expand:
+            self.expand_conv = CNNBlock(in_dims, self.hidden_dims, kernel_size=3, stride=1, padding=1)
+
+        self.conv = nn.Sequential(
+            CNNBlock(self.hidden_dims, self.hidden_dims, kernel_size=kernel_size, stride=stride, padding=padding, groups=self.hidden_dims),
+            SqueezeExcitation(self.hidden_dims, self.reduced_dims),
+            nn.Conv2d(self.hidden_dims, out_dims, kernel_size=1, stride=1, padding=0, bias=False),
+            nn.BatchNorm2d(out_dims)
+        )
+    
+    def stochastic_depth(self, x):
+        if not self.training:
+            return x
+        
+        binary_tensor = torch.rand(x.shape[0], 1, 1, 1, device=x.device) < self.survival_prob
+        
+        return torch.div(x, self.survival_prob) * binary_tensor
+
+    def forward(self, inputs):
+        x = self.expand_conv(inputs) if self.expand else inputs
+        
+        if self.use_residual:
+            return self.stochastic_depth(self.conv(x)) + inputs
         else:
             return self.conv(x)
-            
-
 
 if __name__ == '__main__':
-    inp = torch.randn(32, 3, 224, 224)
+    inp = torch.randn(32, 3, 256, 256)
     
-    mb = MBConvBlock(in_dims=3, out_dims=16, stride=1, expansion_factor=1, se=True)
-    tf = TransformerBlock(token_dims=224*224, mlp_dims=16, head_dims=16, heads=8)
+    mb = InvertedResidualBlock(in_dims=3, out_dims=24, kernel_size=3, stride=1, padding=1, expand_ratio=4)
+    tf = TransformerBlock(token_dims=256*256, mlp_dims=16, head_dims=16, heads=8)
     
     x = mb(inp)
     print(f"Shape of x after MBConvBlock: {x.shape}")

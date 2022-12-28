@@ -3,8 +3,9 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock, MBConvBlock
+from layers import TransformerBlock, CNNBlock, InvertedResidualBlock
 from torch import nn
+from math import ceil
 
 
 class Transformer(nn.Module):
@@ -37,7 +38,7 @@ class Transformer(nn.Module):
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, in_channels, conv_config, width_multiplier, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+    def __init__(self, num_frames, in_channels, conv_config, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0, scale_dim=4):
         """Constructor for ViViT.
 
         Args:
@@ -57,38 +58,39 @@ class ConvolutionalVisionTransformer(nn.Module):
         super(ConvolutionalVisionTransformer, self).__init__()
         
         # EfficientNet style Convolution to extract features from frames
+        self.drop_rate = 0.2
         
-        self.features = [nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=in_channels, kernel_size=3, stride=2, padding=0, bias=False),
-            nn.BatchNorm2d(in_channels),
-            nn.SiLU()
-        )]
+        channels = 32
+        features = [CNNBlock(in_dims=in_channels, out_dims=channels, kernel_size=3, stride=2, padding=1)]
+        in_channels = channels
         
-        for expansion_factor, channels, num_layers, stride, se in conv_config:
-            out_channels = int(channels * width_multiplier)
-            for i in range(num_layers):
-                self.features.append(MBConvBlock(in_dims=in_channels, out_dims=out_channels, stride=stride if 1 == 0 else 1, expansion_factor=expansion_factor, se=se))
+        for expand_ratio, channels, repeats, stride, kernel_size in conv_config:
+            out_channels = 4 * ceil(int(channels * scale_dim) / 4)
+            
+            for layer in range(repeats):
+                features.append(InvertedResidualBlock(in_dims=in_channels, 
+                                                      out_dims=out_channels, 
+                                                      kernel_size=kernel_size,
+                                                      stride=stride if layer == 0 else 1,
+                                                      padding=kernel_size // 2,
+                                                      expand_ratio=expand_ratio, 
+                                                     ))
                 in_channels = out_channels
-                
-        self.features = nn.Sequential(*self.features)
         
-        self.conv_out = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=dim, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(dim),
-            nn.SiLU(),
-            nn.AdaptiveAvgPool2d((1, 1))
-        )
+        features.append(CNNBlock(in_dims=in_channels, out_dims=t_dim, kernel_size=1, stride=1, padding=0))
         
+        self.features = nn.Sequential(*features)
+    
         # Transformer for temporal dimension
-        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
-        self.temporal_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout)
+        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, t_dim))
+        self.temporal_token = nn.Parameter(torch.randn(1, 1, t_dim))
+        self.temporal_transformer = Transformer(token_dim=t_dim, depth=t_depth, head_dims=t_head_dims, heads=t_heads, mlp_dim=t_dim*scale_dim, dropout=dropout)
         
         self.dropout = nn.Dropout(dropout)
         
         self.classifier = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1),
+            nn.LayerNorm(t_dim),
+            nn.Linear(t_dim, 1),
             nn.Sigmoid()
         )
         
@@ -99,7 +101,7 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = rearrange(x, 'b t c h w -> (b t) c h w')
         
         x = self.features(x)
-        x = self.conv_out(x)
+        print(x.shape)
         
         # Unfold time from batch dimension
         x = rearrange(x, '(b t) c h w -> b t (c h w)', b=b, t=t)
@@ -115,13 +117,12 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         return self.classifier(x)
         
-def create_model(num_frames, in_channels, conv_config, width_multiplier, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+def create_model(num_frames, in_channels, conv_config, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
                                           in_channels=in_channels, 
                                           conv_config=conv_config, 
-                                          width_multiplier=width_multiplier, 
-                                          dim=dim, depth=depth, heads=heads, 
-                                          head_dims=head_dims, dropout=dropout, scale_dim=scale_dim)
+                                          t_dim=dim, t_depth=depth, t_heads=heads, 
+                                          t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim)
         
         
 if __name__ == '__main__':
@@ -130,17 +131,18 @@ if __name__ == '__main__':
     NUM_FRAMES = 32
     
     effnetv2_s = [
-        [1,  24,  2, 1, 0],
-        [4,  48,  4, 2, 0],
-        [4,  64,  4, 2, 0],
-        [4, 128,  6, 2, 1],
-        [6, 160,  9, 1, 1],
-        [6, 256, 15, 2, 1],
+        [1, 16, 1, 1, 3],
+        [6, 24, 2, 2, 3],
+        [6, 40, 2, 2, 5],
+        [6, 80, 3, 2, 3],
+        [6, 112, 3, 1, 5],
+        [6, 192, 4, 2, 5],
+        [6, 320, 1, 1, 3],
     ]
     
     test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH)
     
-    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s, width_multiplier=1.0)
+    model = create_model(num_frames=NUM_FRAMES, in_channels=3, conv_config=effnetv2_s)
     result = model(test)
     print(f"Shape of output : {result.shape}")
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad)}")
