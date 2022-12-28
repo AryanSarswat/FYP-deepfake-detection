@@ -52,7 +52,7 @@ class ConvolutionalVisionTransformer(nn.Module):
             depth (int, optional): _description_. Defaults to 4.
             heads (int, optional): _description_. Defaults to 3.
             head_dims (int, optional): _description_. Defaults to 64.
-            dropout (int, optional): _description_. Defaults to 0.
+            dropout (float, optional): _description_. Defaults to 0.
             scale_dim (int, optional): _description_. Defaults to 4.
         """
         super(ConvolutionalVisionTransformer, self).__init__()
