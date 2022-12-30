@@ -147,7 +147,12 @@ num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
 #wandb.watch(model)
-criteria = nn.BCELoss()
+
+def weighted_binary_cross_entropy(output, target):
+    loss = 0.3 * (target * torch.log(output)) + 0.7 * ((1 - target) * torch.log(1 - output))
+    return torch.neg(torch.mean(loss))
+
+criteria = weighted_binary_cross_entropy
 optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
 
 previous_loss = np.inf

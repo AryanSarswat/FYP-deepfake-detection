@@ -118,7 +118,7 @@ class CNNBlock(nn.Module):
         self.cnn = nn.Sequential(
             nn.Conv2d(in_dims, out_dims, kernel_size=kernel_size, stride=stride, padding=padding, groups=groups, bias=False),
             nn.BatchNorm2d(out_dims),
-            nn.SiLU()
+            nn.SiLU(inplace=True)
         )
     
     def forward(self, x):
