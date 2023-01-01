@@ -3,36 +3,10 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from .layers import TransformerBlock
+from collections import OrderedDict
+from Transformer import Transformer
 from torch import nn
 
-
-class Transformer(nn.Module):
-    """Class for Transformer.
-    """
-    def __init__(self, token_dim, depth, head_dims, heads, mlp_dim, dropout=0):
-        """Constructor for Transformer.
-
-        Args:
-            token_dim (int): Dimension of input tokens
-            depth (int): Number of Transformer Blocks
-            head_dims (int): dimension of each head
-            heads (int): Number of heads for layer
-            mlp_dim (int): Dimension of MLP
-            dropout (int, optional): Dropout probability. Defaults to 0.
-        """
-        super().__init__()
-        self.depth = depth
-        self.layers = nn.ModuleList([])
-        self.norm = nn.LayerNorm(token_dim)
-        
-        for _ in range(depth):
-            self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout))
-        
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return self.norm(x)
 
 class ViViT(nn.Module):
     """Class for Video Vision Transformer.
@@ -62,10 +36,10 @@ class ViViT(nn.Module):
         num_patches = (height // patch_size) * (width // patch_size)
         patch_dim = in_channels * patch_size * patch_size
         
-        self.to_patch_embedding = nn.Sequential(
-            Rearrange('b t c (h p1) (w p2) -> b t (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
-            nn.Linear(patch_dim, dim),
-        )
+        self.to_patch_embedding = nn.Sequential(OrderedDict([
+            ('Rearrange', Rearrange('b t c (h p1) (w p2) -> b t (h w) (p1 p2 c)', p1=patch_size, p2=patch_size)),
+            ('ToPatch', nn.Linear(patch_dim, dim)),
+        ]))
         
         self.pos_embedding = nn.Parameter(torch.randn(1, num_frames, num_patches + 1, dim))
         self.spatial_token = nn.Parameter(torch.randn(1, 1, dim))
@@ -121,7 +95,7 @@ if __name__ == '__main__':
     NUM_FRAMES = 32
     PATCH_SIZE = 16
     
-    test = torch.randn(3, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
+    test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
     model = ViViT(num_frames=NUM_FRAMES, patch_size=PATCH_SIZE, in_channels=3, height=HEIGHT, width=WIDTH, dim=256, depth=8, heads=6, head_dims=128).cuda()
     print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH)))
     result = model(test)
