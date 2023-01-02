@@ -20,11 +20,14 @@ class Transformer(nn.Module):
         self.depth = depth
         self.layers = nn.ModuleList([])
         self.norm = nn.LayerNorm(token_dim)
+        self.dropout = nn.Dropout(dropout)
         
         for _ in range(depth):
-            self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout))
+            self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads))
         
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        return self.norm(x)
+        x = self.norm(x)
+        x = self.dropout(x)
+        return x

@@ -4,6 +4,7 @@ from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from collections import OrderedDict
+from layers import PatchEmbedding
 from Transformer import Transformer
 from torch import nn
 
@@ -34,19 +35,14 @@ class ViViT(nn.Module):
         assert width % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
         
         num_patches = (height // patch_size) * (width // patch_size)
-        patch_dim = in_channels * patch_size * patch_size
         
-        self.to_patch_embedding = nn.Sequential(OrderedDict([
-            ('Rearrange', Rearrange('b t c (h p1) (w p2) -> b t (h w) (p1 p2 c)', p1=patch_size, p2=patch_size)),
-            ('ToPatch', nn.Linear(patch_dim, dim)),
-        ]))
+        self.to_patch_embedding = PatchEmbedding(img_size=height, patch_size=patch_size, in_channels=in_channels, embed_dim=dim)
         
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_frames, num_patches + 1, dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
         self.spatial_token = nn.Parameter(torch.randn(1, 1, dim))
         self.spatial_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout)
         
-        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
-        self.temporal_token = nn.Parameter(torch.randn(1, 1, dim))
+        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout)
         
         self.dropout = nn.Dropout(dropout)
@@ -58,25 +54,25 @@ class ViViT(nn.Module):
         )
         
     def forward(self, x):
+        b, t, c, h, w = x.shape
+        
         x = self.to_patch_embedding(x)
         
-        b, t, n, _ = x.shape
+        _ , n, d = x.shape
         
-        cls_spatial_tokens = repeat(self.spatial_token, '() n d -> b t n d', b=b, t=t)
-        x = torch.cat((cls_spatial_tokens, x), dim=2)
-        x += self.pos_embedding[:, :, :(n + 1)]
+        cls_spatial_token = repeat(self.spatial_token, '() n d -> (b t) n d', b=b, t=t)
+        x = torch.cat((cls_spatial_token, x), dim=1)
+        x += self.pos_embedding
         x = self.dropout(x)
-        
-        # Fold the batch and time dimensions
-        x = rearrange(x, 'b t n d -> (b t) n d')
         x = self.spatial_transformer(x)
         
-        # Unfold the batch and time dimensions
-        x = rearrange(x[:,0], '(b t) ... -> b t ...', b=b)
+        # Taking only the spatial token
+        x = x[:,0]
         
-        cls_temporal_tokens = repeat(self.temporal_token, '() n d -> b n d', b=b)
-        x = torch.cat((cls_temporal_tokens, x), dim=1)
-        x += self.temporal_embedding[:, :(t + 1)]
+        # Unfold the batch and time dimensions
+        x = rearrange(x, '(b t) ... -> b t ...', b=b, t=t)
+        
+        x += self.temporal_embedding
         x = self.dropout(x)
         
         x = self.temporal_transformer(x)
@@ -92,7 +88,7 @@ def create_model(num_frames, patch_size, in_channels, height, width, dim=192, de
 if __name__ == '__main__':
     HEIGHT = 256
     WIDTH = 256
-    NUM_FRAMES = 32
+    NUM_FRAMES = 16
     PATCH_SIZE = 16
     
     test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()

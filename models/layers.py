@@ -8,6 +8,32 @@ from collections import OrderedDict
 from functools import partial
 
 
+class PatchEmbedding(nn.Module):
+    def __init__(self, img_size=224, patch_size=16, in_channels=3, embed_dim=768):
+        """
+        Module for patch embedding.
+
+        Args:
+            img_size (int, optional): Input img size. Defaults to 224.
+            patch_size (int, optional): Size of patch. Defaults to 16.
+            in_channels (int, optional): Number of input channels. Defaults to 3.
+            embed_dim (int, optional): Patch embedding dimension. Defaults to 768.
+        """
+        super(PatchEmbedding, self).__init__()
+        self.img_size = (img_size, img_size)
+        self.patch_size = (patch_size, patch_size)
+        self.num_patches = (img_size // patch_size) ** 2
+    
+        self.proj = nn.Conv2d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        
+    def forward(self, x):
+        B, T, C , H, W = x.shape
+        x = rearrange(x, 'b t c h w -> (b t) c h w')
+        x = self.proj(x)
+        x = rearrange(x, '(b t) c h w -> (b t) (h w) c', t=T, b=B)
+        return x
+            
+
 class MHSA(nn.Module):
     """Class for Multi-Headed Self-Attention.
     """
@@ -63,7 +89,7 @@ class TransformerBlock(nn.Module):
         """
         super().__init__()
         
-        self.attention = MHSA(token_dim=token_dims, head_dims=head_dims, heads=heads, dropout=dropout)
+        self.attention = MHSA(token_dim=token_dims, head_dims=head_dims, heads=heads)
 
         self.norm1 = nn.LayerNorm(token_dims)
         self.norm2 = nn.LayerNorm(token_dims)
@@ -71,9 +97,7 @@ class TransformerBlock(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(token_dims, mlp_dims),
             nn.GELU(),
-            nn.Dropout(dropout),
             nn.Linear(mlp_dims, token_dims),
-            nn.Dropout(dropout)
         )
         
     def forward(self, x):
