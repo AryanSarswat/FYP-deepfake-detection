@@ -1,5 +1,5 @@
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from CvT.CvT import create_model
+from models.CvT import create_model
 
 import numpy as np
 import pandas as pd
@@ -20,6 +20,7 @@ args = {
     "batch_size": 1, 
     "num_frames" : 32,
     "architecture": "CvT",
+    "save_path": "checkpoints/CvT.pth",
     "optimizer": "Adam",
     "patience" : 5,
     "lr" : 1e-4,
@@ -27,7 +28,9 @@ args = {
     "min_delta" : 1e-3
 }
 
-wandb.init(project="deepfake-baseline", config=args, name="CvT")
+args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
+
+wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 

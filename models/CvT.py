@@ -11,7 +11,7 @@ from math import ceil
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0, scale_dim=4):
+    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4):
         """Constructor for ViViT.
 
         Args:
@@ -21,12 +21,12 @@ class ConvolutionalVisionTransformer(nn.Module):
             height (int): Height of input
             width (int): Width of input
             num_classes (int): Number of classes
-            dim (int, optional): _description_. Defaults to 192.
-            depth (int, optional): _description_. Defaults to 4.
-            heads (int, optional): _description_. Defaults to 3.
-            head_dims (int, optional): _description_. Defaults to 64.
-            dropout (float, optional): _description_. Defaults to 0.
-            scale_dim (int, optional): _description_. Defaults to 4.
+            dim (int, optional): Token dimensions. Defaults to 192.
+            depth (int, optional): Number of transformer blocks. Defaults to 4.
+            heads (int, optional): Number of attention heads. Defaults to 3.
+            head_dims (int, optional): Number of dimension of attention head. Defaults to 64.
+            dropout (float, optional): Dropout rate. Defaults to 0.
+            scale_dim (int, optional): Scale factor for MLP. Defaults to 4.
         """
         super(ConvolutionalVisionTransformer, self).__init__()
         
@@ -73,10 +73,14 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         return self.classifier(x)
         
-def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
                                           t_dim=dim, t_depth=depth, t_heads=heads, 
                                           t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim)
+    
+def load_model(model_path):
+    model = torch.load(model_path)
+    return model
         
         
 if __name__ == '__main__':

@@ -7,6 +7,7 @@ from collections import OrderedDict
 from layers import PatchEmbedding
 from Transformer import Transformer
 from torch import nn
+from util import trunc_normal_
 
 
 class ViViT(nn.Module):
@@ -53,6 +54,12 @@ class ViViT(nn.Module):
             nn.Sigmoid()
         )
         
+        # Initialize weights
+        trunc_normal_(self.pos_embedding, std=.02)
+        trunc_normal_(self.temporal_embedding, std=.02)
+        trunc_normal_(self.spatial_token, std=.02)
+        self.apply(self._init_weights)
+        
     def forward(self, x):
         b, t, c, h, w = x.shape
         
@@ -80,10 +87,22 @@ class ViViT(nn.Module):
         x = x[:,0]
         
         return self.classifier(x)
+    
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
         
 def create_model(num_frames, patch_size, in_channels, height, width, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
     return ViViT(num_frames, patch_size, in_channels, height, width, dim, depth, heads, head_dims, dropout, scale_dim)
-        
+
+def load_model(path):
+    model = torch.load(path)
+    return model
         
 if __name__ == '__main__':
     HEIGHT = 256

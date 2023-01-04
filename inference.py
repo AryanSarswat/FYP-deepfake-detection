@@ -1,4 +1,4 @@
-from Baseline.BaselineModel import load_model
+from models.CvT import load_model
 from DatasetLoader.ImageDataset import DataLoaderWrapper
 
 from tqdm import tqdm
@@ -8,8 +8,6 @@ import albumentations
 import pandas as pd
 import numpy as np
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, classification_report
-
-
 
 def validate(model, data_loader):
     model.eval()

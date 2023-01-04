@@ -79,13 +79,16 @@ class MHSA(nn.Module):
 class TransformerBlock(nn.Module):
     """Class for Transformer Block.
     """
-    def __init__(self, token_dims, mlp_dims, head_dims, heads=8, dropout=0):
-        """Constructor for Transformer Block.
+    def __init__(self, token_dims, mlp_dims, head_dims, heads=8, dropout=0.):
+        """
+        Class for Transformer Block.
 
         Args:
-            token_dims (int): Dimension of input tokens
-            mlp_dims (int): Dimension of mlp layer
-            heads (int): Number of heads for Multi-Headed Self-Attention
+            token_dims (int): Number of token dimensions.
+            mlp_dims (int): Number of hidden dimensions.
+            head_dims (int): Number of head dimensions.
+            heads (int, optional): Number of heads. Defaults to 8.
+            dropout (float, optional): dropout rate. Defaults to 0..
         """
         super().__init__()
         
@@ -113,8 +116,8 @@ class SqueezeExcitation(nn.Module):
         Args:
             in_channels (int): number of input channels.
             reduction_ratio (int, optional): Reduction ratio for hidden dimension. Defaults to 4.
-            act1 (_type_, optional): _description_. Defaults to F.silu.
-            act2 (_type_, optional): _description_. Defaults to torch.sigmoid.
+            act1 (function, optional): First activation. Defaults to F.silu.
+            act2 (function, optional): Second Activation. Defaults to torch.sigmoid.
         """
         super(SqueezeExcitation, self).__init__()
         hidden_channels = in_channels // reduction_ratio
