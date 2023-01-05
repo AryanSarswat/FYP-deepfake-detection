@@ -21,7 +21,7 @@ args = {
     "batch_size": 1, 
     "num_frames" : 32,
     "architecture": "CvT",
-    "save_path": "checkpoints/CvT.pth",
+    "save_path": "checkpoints/CvT",
     "optimizer": "Adam",
     "patience" : 5,
     "lr" : 1e-4,
@@ -162,6 +162,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=arg
 previous_loss = np.inf
 patience = 0
 
+SAVED_ONCE = False
 try:
     for epoch in range(args['epochs']):
         train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
@@ -183,8 +184,15 @@ try:
         except:
             print("[ERROR] Could not upload data, temporary connection")
         
-        if abs(val_loss - previous_loss) < args['min_delta']:
+        delta = abs(val_loss - previous_loss)
+        if delta < args['min_delta']:
             patience += 1
+            if val_loss < previous_loss:
+                print(f"[INFO] Validation Loss improved by {delta:.2e}, saving model")
+                torch.save(model.state_dict(), args["save_path"] + ".pt")
+                SAVED_ONCE = True
+            else:
+                print(f"[INFO] Validation Loss worsened by {delta:.2e}")
         else:
             patience = 0
         
@@ -197,10 +205,11 @@ try:
 except KeyboardInterrupt:
     print("[ERROR] Training Interrupted")
     print("[INFO] Saving Model")
-    torch.save(model.state_dict(), "CvT.pth")
+    torch.save(model.state_dict(), args["save_path"] + "_interrupted.pt")
     
-wandb.finish()
 print("[INFO] Training Complete")
-print("[INFO] Saving Model")
+wandb.finish()
 
-torch.save(model.state_dict(), "CvT.pth")
+if not SAVED_ONCE:
+    print("[INFO] Saving Model")
+    torch.save(model.state_dict(), args["save_path"] + ".pt")
