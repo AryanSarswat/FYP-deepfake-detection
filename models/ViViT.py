@@ -13,7 +13,7 @@ from util import trunc_normal_
 class ViViT(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, patch_size, in_channels, height, width, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+    def __init__(self, num_frames: int, patch_size: int, in_channels: int, height: int, width: int, dim: int = 192, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4):
         """Constructor for ViViT.
 
         Args:
@@ -97,10 +97,10 @@ class ViViT(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
         
-def create_model(num_frames, patch_size, in_channels, height, width, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+def create_model(num_frames: int, patch_size: int, in_channels: int, height: int, width: int, dim: int = 192, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0, scale_dim: int = 4):
     return ViViT(num_frames, patch_size, in_channels, height, width, dim, depth, heads, head_dims, dropout, scale_dim)
 
-def load_model(path):
+def load_model(path: str):
     model = torch.load(path)
     return model
         

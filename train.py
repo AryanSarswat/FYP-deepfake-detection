@@ -3,6 +3,7 @@ from models.CvT import create_model
 
 import numpy as np
 import pandas as pd
+import typing
 
 from tqdm import tqdm
 import wandb
@@ -198,15 +199,8 @@ except KeyboardInterrupt:
     print("[INFO] Saving Model")
     torch.save(model.state_dict(), "CvT.pth")
     
-    
+wandb.finish()
 print("[INFO] Training Complete")
 print("[INFO] Saving Model")
 
 torch.save(model.state_dict(), "CvT.pth")
-
-
-
-
-
-
-

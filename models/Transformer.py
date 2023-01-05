@@ -5,7 +5,7 @@ import torch.nn as nn
 class Transformer(nn.Module):
     """Class for Transformer.
     """
-    def __init__(self, token_dim, depth, head_dims, heads, mlp_dim, dropout=0):
+    def __init__(self, token_dim: int, depth: int, head_dims: int, heads: int, mlp_dim: int, dropout:float = 0):
         """Constructor for Transformer.
 
         Args:

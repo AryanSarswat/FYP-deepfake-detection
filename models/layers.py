@@ -6,10 +6,10 @@ from torch import nn
 from torchsummary import summary
 from collections import OrderedDict
 from functools import partial
-
+import typing
 
 class PatchEmbedding(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, in_channels=3, embed_dim=768):
+    def __init__(self, img_size: int = 224, patch_size: int = 16, in_channels: int = 3, embed_dim: int = 768):
         """
         Module for patch embedding.
 
@@ -37,7 +37,7 @@ class PatchEmbedding(nn.Module):
 class MHSA(nn.Module):
     """Class for Multi-Headed Self-Attention.
     """
-    def __init__(self, token_dim, head_dims, heads=8, dropout=0):
+    def __init__(self, token_dim: int, head_dims: int, heads: int = 8, dropout: float = 0.):
         """Constructor for Multi-Headed Self-Attention.
         
         Args:
@@ -79,7 +79,7 @@ class MHSA(nn.Module):
 class TransformerBlock(nn.Module):
     """Class for Transformer Block.
     """
-    def __init__(self, token_dims, mlp_dims, head_dims, heads=8, dropout=0.):
+    def __init__(self, token_dims: int, mlp_dims: int, head_dims: int, heads: int = 8, dropout: float = 0.):
         """
         Class for Transformer Block.
 
@@ -109,7 +109,7 @@ class TransformerBlock(nn.Module):
         return out
     
 class SqueezeExcitation(nn.Module):
-    def __init__(self, in_channels, reduction_ratio=4, act1=F.silu, act2=torch.sigmoid):
+    def __init__(self, in_channels: int, reduction_ratio:int = 4, act1=F.silu, act2=torch.sigmoid):
         """
         _summary_
 
@@ -135,7 +135,7 @@ class SqueezeExcitation(nn.Module):
         return x * attn
     
 class ConvBNAct(nn.Sequential):
-    def __init__(self, in_channels, out_channels, kernel_size, stride, groups, norm_layer, act, conv_layer=nn.Conv2d):
+    def __init__(self, in_channels: int, out_channels: int, kernel_size: int, stride: int, groups: int, norm_layer: nn.Module, act: nn.Module, conv_layer: nn.Module = nn.Conv2d):
         """
         Constructor for Convolutional Block.
 
@@ -162,12 +162,12 @@ class ConvBNAct(nn.Sequential):
         )
         
 class StochasticDepth(nn.Module):
-    def __init__(self, prob, mode):
+    def __init__(self, prob: float, mode: str):
         """
         Stochastic Depth
 
         Args:
-            prob (int): probability of dying
+            prob (float): probability of dying
             mode (str): "row" or "all". If "row", then each row of the tensor has a probability of dying. If "all", then the entire tensor has a probability of dying.
         """
         super(StochasticDepth, self).__init__()
@@ -189,10 +189,10 @@ def adjust_channels(channel, factor, divisible=8):
     return divisible_channel
     
 class MBConv(nn.Module):
-    def __init__(self, expand_ratio, kernel_size, stride, in_channels, out_channels, use_se, fused, act=partial(nn.SiLU, inplace=True), norm_layer=nn.BatchNorm2d, sd_prob=0):
+    def __init__(self, expand_ratio: int, kernel_size: int, stride: int, in_channels: int, out_channels: int, use_se: bool, fused: bool, act=partial(nn.SiLU, inplace=True), norm_layer=nn.BatchNorm2d, sd_prob: float = 0.):
         """
         Args:
-            expand_ratio (float): factor to determine the number of channels in the hidden layer
+            expand_ratio (int): factor to determine the number of channels in the hidden layer
             kernel_size (int): kernel size of the depthwise convolution
             stride (int): stride of the depthwise convolution
             in_channels (int): number of input channels
@@ -201,7 +201,7 @@ class MBConv(nn.Module):
             fused (boolean): boolean to determine whether to use fused convolution
             act (nn.Module, optional): activation to be used. Defaults to nn.SiLU.
             norm_layer (Module, optional): type of normalization to be used. Defaults to nn.BatchNorm2d.
-            sd_prob (int, optional): stochastic depth probability. Defaults to 0.
+            sd_prob (float, optional): stochastic depth probability. Defaults to 0.
         """
         super(MBConv, self).__init__()
         inter_channel = adjust_channels(in_channels, expand_ratio)
