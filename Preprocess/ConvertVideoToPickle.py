@@ -59,25 +59,26 @@ def convert_video_to_images(src_path: str, dest_path: str, num_frames: int = 32,
         
 def img_fast_fourier_transform(img):
     img = np.fft.fftshift(np.fft.fft2(img))
-    img = abs(img)
-    img = np.log(img + 1e-10) # to avoid log(0)
-    img = (img - img.min()) / (img.max() - img.min()) # normalize
+    real = img.real # H X W X C
+    imag = img.imag # H X W X C
+    real = normalize_255(real)
+    imag = normalize_255(imag)
+    img = np.concatenate((img, real, imag), axis=2)
     return img
     
 def img_discrete_cosine_transform(img):
     #img = cv2.imread(img_path)
     return np.fft.dct(img)
+
+def normalize_255(img):
+    img = (img - img.min()) / (img.max() - img.min()) * 255
+    return img
         
 if __name__ == "__main__":
     #print("[INFO] Preprocessing real videos...")
     #preprocess(REAL_PATH)
     #print("[INFO] Preprocessing fake videos...")
     #preprocess(FAKE_PATH, isReal=False)
-    
-    img = cv2.imread("C:\\Users\\Razer\\Pictures\\Saved Pictures\\minimalist-rock-climbing-a1910.jpg")
-    img = cv2.resize(img, (256, 256))
-    img = img_fast_fourier_transform(img)
-    plt.imshow(img)
-    plt.show()
+
     
     
