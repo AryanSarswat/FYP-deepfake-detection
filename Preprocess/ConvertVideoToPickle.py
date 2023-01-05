@@ -3,7 +3,8 @@ import os
 import numpy as np
 from tqdm import tqdm
 import typing
-import matplotlib.pyplot as plt 
+from matplotlib import pyplot as plt
+from scipy.fftpack import dct
 
 REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
 FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
@@ -67,8 +68,12 @@ def img_fast_fourier_transform(img):
     return img
     
 def img_discrete_cosine_transform(img):
-    #img = cv2.imread(img_path)
-    return np.fft.dct(img)
+    r = normalize_255(dct(dct(img[:, :, 0], axis=0), axis=1))
+    g = normalize_255(dct(dct(img[:, :, 1], axis=0), axis=1))
+    b = normalize_255(dct(dct(img[:, :, 2], axis=0), axis=1))
+    dct = np.stack((r, g, b), axis=2)
+    img = np.concatenate((img, dct), axis=2)
+    return img
 
 def normalize_255(img):
     img = (img - img.min()) / (img.max() - img.min()) * 255
@@ -79,6 +84,3 @@ if __name__ == "__main__":
     #preprocess(REAL_PATH)
     #print("[INFO] Preprocessing fake videos...")
     #preprocess(FAKE_PATH, isReal=False)
-
-    
-    
