@@ -47,12 +47,16 @@ def convert_video_to_images(src_path: str, dest_path: str, num_frames: int = 32,
             break
         
         image = cv2.resize(image, (256, 256))
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         if fft:
-            image = img_fast_fourier_transform(image)
-            
+            fourier_img = img_fast_fourier_transform(image)
         if dct:
-            image = img_discrete_cosine_transform(image)
+            dct_img = img_discrete_cosine_transform(image)
+        if fft:
+            image = np.concatenate((image, fourier_img), axis=2)
+        if dct: 
+            image = np.concatenate((image, dct_img), axis=2)
 
         path_to_save = os.path.join(dest_path, f'{idx}.npy')
         np.save(path_to_save, image)
@@ -64,16 +68,15 @@ def img_fast_fourier_transform(img):
     imag = img.imag # H X W X C
     real = normalize_255(real)
     imag = normalize_255(imag)
-    img = np.concatenate((img, real, imag), axis=2)
-    return img
+    fourier = np.concatenate((real, imag), axis=2)
+    return fourier
     
 def img_discrete_cosine_transform(img):
     r = normalize_255(dct(dct(img[:, :, 0], axis=0), axis=1))
     g = normalize_255(dct(dct(img[:, :, 1], axis=0), axis=1))
     b = normalize_255(dct(dct(img[:, :, 2], axis=0), axis=1))
     dct = np.stack((r, g, b), axis=2)
-    img = np.concatenate((img, dct), axis=2)
-    return img
+    return dct
 
 def normalize_255(img):
     img = (img - img.min()) / (img.max() - img.min()) * 255
