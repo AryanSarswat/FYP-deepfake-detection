@@ -1,20 +1,19 @@
-from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
-
-import numpy as np
-import pandas as pd
 import typing
 
-from tqdm import tqdm
-import wandb
-
-import torch
-import torch.optim
-import torch.nn as nn
 import albumentations
-
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.optim
+import wandb
+from sklearn.metrics import (accuracy_score, f1_score, precision_score,
+                             recall_score)
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
+from tqdm import tqdm
+
+from DatasetLoader.VideoDataset import DataLoaderWrapper
+from models.CvT import create_model
 
 args = {
     "epochs": 50,

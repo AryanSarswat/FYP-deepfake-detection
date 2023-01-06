@@ -1,10 +1,12 @@
+import typing
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from layers import ConvBNAct, MBConv, StochasticDepth
 from torchsummary import summary
-from collections import OrderedDict
-import typing
+
 
 class EfficientNetV2(nn.Module):
     def __init__(self, layer_info: typing.List[tuple], out_channels: int = 1280, num_classes: int = 0, dropout: float = 0.2, stochastic_depth: int = 0, act_layer=nn.SiLU, norm_layer=nn.BatchNorm2d):

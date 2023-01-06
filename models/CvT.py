@@ -1,12 +1,14 @@
+from math import ceil
+
 import torch
 import torch.nn.functional as F
-from torchsummary import summary
+from EfficientNetV2 import create_efficientnetv2_backbone
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from EfficientNetV2 import create_efficientnetv2_backbone
-from Transformer import Transformer
 from torch import nn
-from math import ceil
+from torchsummary import summary
+from Transformer import Transformer
+
 
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.

@@ -1,12 +1,14 @@
+import typing
+from collections import OrderedDict
+from functools import partial
+
 import torch
 import torch.nn.functional as F
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchsummary import summary
-from collections import OrderedDict
-from functools import partial
-import typing
+
 
 class PatchEmbedding(nn.Module):
     def __init__(self, img_size: int = 224, patch_size: int = 16, in_channels: int = 3, embed_dim: int = 768):

@@ -1,3 +1,6 @@
+import os
+
+import albumentations
 import cv2
 import numpy as np
 import pandas as pd
@@ -5,9 +8,8 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-import os
 from tqdm import tqdm
-import albumentations
+
 
 class VideoDataset(Dataset):
     def __init__(self, path, labels, num_frames, transforms=None, pickle=False):

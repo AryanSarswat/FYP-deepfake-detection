@@ -1,12 +1,13 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn.functional as F
-from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from collections import OrderedDict
 from layers import PatchEmbedding
-from Transformer import Transformer
 from torch import nn
+from torchsummary import summary
+from Transformer import Transformer
 from util import trunc_normal_
 
 
@@ -86,7 +87,7 @@ class ViViT(nn.Module):
         
         x = x[:,0]
         
-        return self.classifier(x)
+        return self.head(x)
     
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
