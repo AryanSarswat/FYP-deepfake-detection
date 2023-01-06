@@ -48,7 +48,7 @@ class ViViT(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         
-        self.classifier = nn.Sequential(
+        self.head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, 1),
             nn.Sigmoid()
