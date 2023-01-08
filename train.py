@@ -15,19 +15,24 @@ import albumentations
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
 
+# Optimisations
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.enabled = True
+
 args = {
     "epochs": 50,
-    "batch_size": 1, 
+    "batch_size": 6,
     "num_frames" : 32,
     "architecture": "CvT",
+    "save_path": "CvT_weighted_loss",
     "optimizer": "Adam",
     "patience" : 5,
-    "lr" : 1e-4,
-    "weight_decay": 1e-5,
+    "lr" : 2e-5,
+    "weight_decay": 1e-8,
     "min_delta" : 1e-3
 }
 
-wandb.init(project="deepfake-baseline", config=args, name="CvT")
+wandb.init(project="deepfake-baseline", config=args, name=args["save_path"])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -140,14 +145,23 @@ def validate(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], dim=512, depth=6, heads=6, head_dims=128, dropout=0.2, scale_dim=4)
+model = create_model(num_frames=args["num_frames"], dim=256, depth=6, heads=6, head_dims=128, dropout=0.25, scale_dim=4)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-#wandb.watch(model)
-criteria = nn.BCELoss()
+wandb.watch(model)
+
+class weighted_binary_cross_entropy(nn.Module):
+    def __init__(self, weight=None):
+        super(weighted_binary_cross_entropy, self).__init__()
+    
+    def forward(self, output, target):
+        loss = (0.5 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
+        return torch.neg(torch.mean(loss))
+
+criteria = weighted_binary_cross_entropy()
 optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
 
 previous_loss = np.inf
@@ -188,13 +202,13 @@ try:
 except KeyboardInterrupt:
     print("[ERROR] Training Interrupted")
     print("[INFO] Saving Model")
-    torch.save(model.state_dict(), "CvT.pth")
+    torch.save(model.state_dict(), args["save_path"] + '.pth')
     
     
 print("[INFO] Training Complete")
 print("[INFO] Saving Model")
 
-torch.save(model.state_dict(), "CvT.pth")
+torch.save(model.state_dict(), args["save_path"] + '.pth')
 
 
 

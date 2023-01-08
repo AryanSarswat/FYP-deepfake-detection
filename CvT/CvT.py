@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torchsummary import summary
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import TransformerBlock
+from .layers import TransformerBlock
 from torch import nn
 from math import ceil
 from torchvision.models import efficientnet_v2_s
@@ -107,8 +107,8 @@ if __name__ == '__main__':
     WIDTH = 256
     NUM_FRAMES = 32
     
-    test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH)
-    model = create_model(num_frames=NUM_FRAMES)
+    test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
+    model = create_model(num_frames=NUM_FRAMES).cuda()
     result = model(test)
     print(f"Shape of output : {result.shape}")
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")

@@ -27,7 +27,6 @@ print(f"[INFO] Number of Fake videos: {len(FAKE_VIDEOS)}")
 
 for video in tqdm(REAL_VIDEOS):
     df.loc[len(df)] = [video, 0]
-    df.loc[len(df)] = [video, 0]
     
 for video in tqdm(FAKE_VIDEOS):
     df.loc[len(df)] = [video, 1]
