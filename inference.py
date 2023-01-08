@@ -6,6 +6,7 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
                              precision_score, recall_score)
 from tqdm import tqdm
 
+
 from DatasetLoader.ImageDataset import DataLoaderWrapper
 from models.CvT import load_model
 
