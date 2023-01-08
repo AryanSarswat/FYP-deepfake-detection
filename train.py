@@ -26,9 +26,15 @@ args = {
     "architecture": "CvT",
     "save_path": "checkpoints/CvT" + ".pth",
     "optimizer": "Adam",
+<<<<<<< HEAD
     "patience" : 5,
     "lr" : 2e-5,
     "weight_decay": 1e-8,
+=======
+    "patience" : 3,
+    "lr" : 2e-5,
+    "weight_decay": 1e-5,
+>>>>>>> 95f0866bba61d8350369dd52841344e7f013b5c7
     "min_delta" : 1e-3
 }
 
@@ -61,7 +67,7 @@ print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shap
 train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'], shuffle=True)
 test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'])
 
-def train(model, data_loader, optimizer, criteria, epoch):
+def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
     epoch_loss = 0
     epoch_acc = 0
@@ -106,7 +112,7 @@ def train(model, data_loader, optimizer, criteria, epoch):
 
     return train_loss, train_acc, train_f1, train_precision, train_recall
 
-def validate(model, data_loader, criteria, epoch):
+def validate_epoch(model, data_loader, criteria, epoch):
     model.eval()
     epoch_loss = 0
     epoch_acc = 0
@@ -170,10 +176,12 @@ previous_loss = np.inf
 patience = 0
 
 SAVED_ONCE = False
+LOWEST_LOSS = np.inf
+
 try:
     for epoch in range(args['epochs']):
-        train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
-        val_loss, val_acc, val_f1, val_precision, val_recall = validate(model, test_loader, criteria, epoch)
+        train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch)
+        val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch)
         
         try:
             wandb.log({
@@ -191,15 +199,24 @@ try:
         except:
             print("[ERROR] Could not upload data, temporary connection")
         
+<<<<<<< HEAD
         delta = abs(val_loss - previous_loss)
         
 
         if delta < args['min_delta']:
+=======
+        delta = val_loss - previous_loss
+        
+        if val_loss < LOWEST_LOSS:
+            torch.save(model.state_dict(), args["save_path"] + ".pt")
+            LOWEST_LOSS = val_loss
+            SAVED_ONCE = True
+        
+        if abs(delta) < args['min_delta'] or delta < 0:
+>>>>>>> 95f0866bba61d8350369dd52841344e7f013b5c7
             patience += 1
             if val_loss < previous_loss:
                 print(f"[INFO] Validation Loss improved by {delta:.2e}, saving model")
-                torch.save(model.state_dict(), args["save_path"] + ".pt")
-                SAVED_ONCE = True
             else:
                 print(f"[INFO] Validation Loss worsened by {delta:.2e}")
         else:
