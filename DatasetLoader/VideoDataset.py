@@ -1,3 +1,6 @@
+import os
+
+import albumentations
 import cv2
 import numpy as np
 import pandas as pd
@@ -5,24 +8,28 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-import os
 from tqdm import tqdm
-import albumentations
+
 
 class VideoDataset(Dataset):
-    def __init__(self, path, labels, num_frames, transforms=None):
+    def __init__(self, path, labels, num_frames, transforms=None, pickle=False):
         self.X = path
         self.y = labels
         self.num_frames = num_frames
         self.aug = transforms
+        self.pickle = pickle
         
     def read_video(self, path):
         frames = []
         
         files = os.listdir(path)
         for file in files:
-            frame = cv2.imread(os.path.join(path, file))
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if self.pickle:
+                frame = np.load(os.path.join(path, file))
+            else:
+                frame = cv2.imread(os.path.join(path, file))
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                
             frame = frame.transpose(2,0,1)
             frame = frame / 255
             frame = torch.tensor(frame, dtype=torch.float)

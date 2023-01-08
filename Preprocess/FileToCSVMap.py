@@ -1,9 +1,9 @@
-import pandas as pd
-import numpy as np
 import os
 
-from tqdm import tqdm
+import numpy as np
+import pandas as pd
 from imutils import paths
+from tqdm import tqdm
 
 FILE_PATH = 'dfdc/images/'
 SAVE_PATH = 'dfdc/images/'

@@ -1,6 +1,7 @@
-from tqdm import tqdm
-import os 
+import os
+
 import pandas as pd
+from tqdm import tqdm
 
 REAL_PATH = 'videos/real/'
 FAKE_PATH = 'videos/fake/'

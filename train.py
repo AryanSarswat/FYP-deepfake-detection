@@ -1,19 +1,19 @@
-from DatasetLoader.VideoDataset import DataLoaderWrapper
-from CvT.CvT import create_model
+import typing
 
+import albumentations
 import numpy as np
 import pandas as pd
-
-from tqdm import tqdm
-import wandb
-
 import torch
-import torch.optim
 import torch.nn as nn
-import albumentations
-
+import torch.optim
+import wandb
+from sklearn.metrics import (accuracy_score, f1_score, precision_score,
+                             recall_score)
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score
+from tqdm import tqdm
+
+from DatasetLoader.VideoDataset import DataLoaderWrapper
+from models.CvT import create_model
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -24,7 +24,7 @@ args = {
     "batch_size": 6,
     "num_frames" : 32,
     "architecture": "CvT",
-    "save_path": "CvT_weighted_loss",
+    "save_path": "checkpoints/CvT" + ".pth",
     "optimizer": "Adam",
     "patience" : 5,
     "lr" : 2e-5,
@@ -32,7 +32,9 @@ args = {
     "min_delta" : 1e-3
 }
 
-wandb.init(project="deepfake-baseline", config=args, name=args["save_path"])
+args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
+
+wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -167,6 +169,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=arg
 previous_loss = np.inf
 patience = 0
 
+SAVED_ONCE = False
 try:
     for epoch in range(args['epochs']):
         train_loss, train_acc, train_f1, train_precision, train_recall = train(model, train_loader, optimizer, criteria, epoch)
@@ -188,8 +191,17 @@ try:
         except:
             print("[ERROR] Could not upload data, temporary connection")
         
-        if abs(val_loss - previous_loss) < args['min_delta']:
+        delta = abs(val_loss - previous_loss)
+        
+
+        if delta < args['min_delta']:
             patience += 1
+            if val_loss < previous_loss:
+                print(f"[INFO] Validation Loss improved by {delta:.2e}, saving model")
+                torch.save(model.state_dict(), args["save_path"] + ".pt")
+                SAVED_ONCE = True
+            else:
+                print(f"[INFO] Validation Loss worsened by {delta:.2e}")
         else:
             patience = 0
         
@@ -202,17 +214,11 @@ try:
 except KeyboardInterrupt:
     print("[ERROR] Training Interrupted")
     print("[INFO] Saving Model")
-    torch.save(model.state_dict(), args["save_path"] + '.pth')
-    
+    torch.save(model.state_dict(), args["save_path"] + "_interrupted.pt")
     
 print("[INFO] Training Complete")
-print("[INFO] Saving Model")
+wandb.finish()
 
-torch.save(model.state_dict(), args["save_path"] + '.pth')
-
-
-
-
-
-
-
+if not SAVED_ONCE:
+    print("[INFO] Saving Model")
+    torch.save(model.state_dict(), args["save_path"] + ".pt")

@@ -1,44 +1,23 @@
+from math import ceil
+
 import torch
 import torch.nn.functional as F
-from torchsummary import summary
+from EfficientNetV2 import create_efficientnetv2_backbone
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
+<<<<<<< HEAD:CvT/CvT.py
 from .layers import TransformerBlock
+=======
+>>>>>>> 64d624b8d30635bffc6ec75524d5e7b8f7063f58:models/CvT.py
 from torch import nn
-from math import ceil
-from torchvision.models import efficientnet_v2_s
+from torchsummary import summary
+from Transformer import Transformer
 
-class Transformer(nn.Module):
-    """Class for Transformer.
-    """
-    def __init__(self, token_dim, depth, head_dims, heads, mlp_dim, dropout=0):
-        """Constructor for Transformer.
-
-        Args:
-            token_dim (int): Dimension of input tokens
-            depth (int): Number of Transformer Blocks
-            head_dims (int): dimension of each head
-            heads (int): Number of heads for layer
-            mlp_dim (int): Dimension of MLP
-            dropout (int, optional): Dropout probability. Defaults to 0.
-        """
-        super().__init__()
-        self.depth = depth
-        self.layers = nn.ModuleList([])
-        self.norm = nn.LayerNorm(token_dim)
-        
-        for _ in range(depth):
-            self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout))
-        
-    def forward(self, x):
-        for layer in self.layers:
-            x = layer(x)
-        return self.norm(x)
 
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0, scale_dim=4):
+    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4):
         """Constructor for ViViT.
 
         Args:
@@ -48,18 +27,19 @@ class ConvolutionalVisionTransformer(nn.Module):
             height (int): Height of input
             width (int): Width of input
             num_classes (int): Number of classes
-            dim (int, optional): _description_. Defaults to 192.
-            depth (int, optional): _description_. Defaults to 4.
-            heads (int, optional): _description_. Defaults to 3.
-            head_dims (int, optional): _description_. Defaults to 64.
-            dropout (float, optional): _description_. Defaults to 0.
-            scale_dim (int, optional): _description_. Defaults to 4.
+            dim (int, optional): Token dimensions. Defaults to 192.
+            depth (int, optional): Number of transformer blocks. Defaults to 4.
+            heads (int, optional): Number of attention heads. Defaults to 3.
+            head_dims (int, optional): Number of dimension of attention head. Defaults to 64.
+            dropout (float, optional): Dropout rate. Defaults to 0.
+            scale_dim (int, optional): Scale factor for MLP. Defaults to 4.
         """
         super(ConvolutionalVisionTransformer, self).__init__()
         
         # EfficientNet style Convolution to extract features from frames
-        self.efficientnet_backbone = efficientnet_v2_s()
-        self.efficientnet_backbone.classifier = nn.Linear(1280, t_dim)
+        self.efficientnet_backbone = create_efficientnetv2_backbone()
+        
+        self.fc = nn.Linear(1280, t_dim)
     
         # Transformer for temporal dimension
         self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, t_dim))
@@ -82,6 +62,9 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         x = self.efficientnet_backbone(x)
         
+        # Map to token dimension
+        x = self.fc(x)
+        
         # Unfold time from batch dimension
         x = rearrange(x, '(b t) d -> b t d', b=b, t=t)
         
@@ -96,15 +79,20 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         return self.classifier(x)
         
-def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0, scale_dim=4):
+def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
                                           t_dim=dim, t_depth=depth, t_heads=heads, 
                                           t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim)
+    
+def load_model(model_path):
+    model = torch.load(model_path)
+    return model
         
         
 if __name__ == '__main__':
     HEIGHT = 256
     WIDTH = 256
+<<<<<<< HEAD:CvT/CvT.py
     NUM_FRAMES = 32
     
     test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
@@ -113,3 +101,13 @@ if __name__ == '__main__':
     print(f"Shape of output : {result.shape}")
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cuda'))
+=======
+    NUM_FRAMES = 8
+    
+    
+    test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
+    model = create_model(num_frames=NUM_FRAMES).cuda()
+    output = model(test)
+    print(output.shape)
+    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH)))
+>>>>>>> 64d624b8d30635bffc6ec75524d5e7b8f7063f58:models/CvT.py
