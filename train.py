@@ -26,15 +26,9 @@ args = {
     "architecture": "CvT",
     "save_path": "checkpoints/CvT" + ".pth",
     "optimizer": "Adam",
-<<<<<<< HEAD
-    "patience" : 5,
-    "lr" : 2e-5,
-    "weight_decay": 1e-8,
-=======
     "patience" : 3,
     "lr" : 2e-5,
-    "weight_decay": 1e-5,
->>>>>>> 95f0866bba61d8350369dd52841344e7f013b5c7
+    "weight_decay": 1e-8,
     "min_delta" : 1e-3
 }
 
@@ -199,24 +193,17 @@ try:
         except:
             print("[ERROR] Could not upload data, temporary connection")
         
-<<<<<<< HEAD
-        delta = abs(val_loss - previous_loss)
-        
-
-        if delta < args['min_delta']:
-=======
         delta = val_loss - previous_loss
         
         if val_loss < LOWEST_LOSS:
             torch.save(model.state_dict(), args["save_path"] + ".pt")
             LOWEST_LOSS = val_loss
             SAVED_ONCE = True
-        
-        if abs(delta) < args['min_delta'] or delta < 0:
->>>>>>> 95f0866bba61d8350369dd52841344e7f013b5c7
+
+        if abs(delta) < args['min_delta'] or delta > 0:
             patience += 1
             if val_loss < previous_loss:
-                print(f"[INFO] Validation Loss improved by {delta:.2e}, saving model")
+                print(f"[INFO] Validation Loss improved by {delta:.2e}")
             else:
                 print(f"[INFO] Validation Loss worsened by {delta:.2e}")
         else:
