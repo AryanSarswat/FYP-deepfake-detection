@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 
 class VideoDataset(Dataset):
-    def __init__(self, path, labels, num_frames, transforms=None, pickle=False):
+    def __init__(self, path, labels, num_frames, transforms=None, pickle=False, fft=False, dct=False):
         self.X = path
         self.y = labels
         self.num_frames = num_frames
@@ -62,19 +62,7 @@ if __name__ == "__main__":
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
-    print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
-   
-    transforms = albumentations.Compose([
-        albumentations.Resize(256,256),
-        albumentations.Normalize(),
-    ])
-
-    train = DataLoaderWrapper(X_train, y_train, transforms=transforms, batch_size=128, shuffle=True)
-    test = DataLoaderWrapper(X_test, y_test, transforms=transforms, batch_size=128, shuffle=True)
-    
-    for idx, (X_sample, y_sample) in tqdm(enumerate(train), total=len(train)):
-        print(f"[INFO] Shape of training data : {X_sample.shape}")
-        print(f"[INFO] Min of training data : {torch.min(X_sample)}")
+    print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}") 
         print(f"[INFO] Max of training data : {torch.max(X_sample)}")
         print(f"[INFO] Training data type : {X_sample.dtype}")
         print(f"[INFO] Training label type : {y_sample.dtype}")

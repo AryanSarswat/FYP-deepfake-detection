@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
-
+import pytorchvideo.transforms as VT
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     def norm_cdf(x):
@@ -98,6 +98,8 @@ def resized_crop(clip, i, j, h, w, size, interpolation_mode="bilinear"):
 
 random_gaussian_blur = lambda p : transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))], p=p)
 
+d
+# TODO Fix for Videos
 flip_and_jitter = transforms.Compose(
     [
         transforms.RandomHorizontalFlip(p=0.5),
@@ -112,16 +114,15 @@ flip_and_jitter = transforms.Compose(
 
 normalize = transforms.Compose(
     [
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        VT.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225], inplace=True)
     ]
 )
 
 class RandomResizedCropVideo(transforms.RandomResizedCrop):
     def __init__(
         self,
-        size,
-        scale=(0.08, 1.0),
+        size: int,
+        scale: tuple=(0.08, 1.0),
         ratio=(3.0 / 4.0, 4.0 / 3.0),
         interpolation_mode="bilinear",
     ):
@@ -177,7 +178,7 @@ class DataAugmentation:
                 flip_and_jitter,
                 random_gaussian_blur(p=0.1),
                 transforms.RandomSolarize(170, p=0.2),
-                normalize               
+                normalize,               
             ]
         )
         
@@ -186,7 +187,7 @@ class DataAugmentation:
                 RandomResizedCropVideo(size=size, scale=local_crops_scale),
                 flip_and_jitter,
                 random_gaussian_blur(p=0.5),
-                normalize       
+                normalize,       
             ]
         )
         
@@ -288,4 +289,11 @@ class DINOLoss(nn.Module):
     def update_center(self, teacher_output: torch.Tensor):
         batch_center = torch.cat(teacher_output).mean(dim=0, keepdim=True) # (1, out_dim)
         self.center = self.center * self.center_momentum + batch_center * (1 - self.center_momentum)
-        
+    
+if __name__ == "__main__":
+    cropper = DataAugmentation(size=224)
+    test = torch.rand(3, 16, 224, 224)
+    result = cropper(test)
+    for r in result:
+        print(r.shape)
+    
