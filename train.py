@@ -24,7 +24,7 @@ args = {
     "batch_size": 6,
     "num_frames" : 32,
     "architecture": "CvT",
-    "save_path": "checkpoints/CvT" + ".pth",
+    "save_path": "checkpoints/CvT",
     "optimizer": "Adam",
     "patience" : 3,
     "lr" : 2e-5,
@@ -200,7 +200,7 @@ try:
             LOWEST_LOSS = val_loss
             SAVED_ONCE = True
 
-        if abs(delta) < args['min_delta'] or delta > 0:
+        if abs(delta) < args['min_delta'] or val_loss > LOWEST_LOSS:
             patience += 1
             if val_loss < previous_loss:
                 print(f"[INFO] Validation Loss improved by {delta:.2e}")
