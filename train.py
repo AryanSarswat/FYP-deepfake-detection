@@ -69,7 +69,10 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_recall = 0
     epoch_f1 = 0
     idx = 0
-    for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Training", total=len(data_loader)):
+    
+    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {running_loss} - Running accuracy: {running_accuracy}", total=len(data_loader))
+    
+    for idx, (X, y) in pbar:
         X = X.to(device)
         y = y.to(device)
         
@@ -95,6 +98,8 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+        
+        pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1)} - Running accuracy: {epoch_acc / (idx + 1)}")
     
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
@@ -115,7 +120,9 @@ def validate_epoch(model, data_loader, criteria, epoch):
     epoch_f1 = 0
     idx = 0
     with torch.no_grad():
-        for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation", total=len(data_loader)):
+        pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {running_loss} - Running accuracy: {running_accuracy}", total=len(data_loader))
+        
+        for idx, (X, y) in pbar:
             X = X.to(device)
             y = y.to(device)
 
@@ -136,6 +143,8 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+            
+            pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1)} - Running accuracy: {epoch_acc / (idx + 1)}")
 
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
