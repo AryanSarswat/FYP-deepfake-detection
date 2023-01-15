@@ -4,11 +4,11 @@ import torch
 import torch.nn.functional as F
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-from layers import PatchEmbedding
+from .layers import PatchEmbedding
 from torch import nn
 from torchsummary import summary
-from Transformer import Transformer
-from util import trunc_normal_
+from .Transformer import Transformer
+from .util import trunc_normal_
 
 
 class ViViT(nn.Module):

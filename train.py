@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
+from models.ViViT import create_model
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -21,15 +21,15 @@ torch.backends.cudnn.enabled = True
 
 args = {
     "epochs": 50,
-    "batch_size": 18,
+    "batch_size": 50,
     "num_frames" : 16,
-    "architecture": "CvT_weighted",
-    "save_path": "checkpoints/CvT",
+    "architecture": "ViViT_weighted",
+    "save_path": "checkpoints/ViViT_weighted",
     "optimizer": "Adam",
     "patience" : 3,
     "lr" : 2e-5,
     "weight_decay": 1e-8,
-    "min_delta" : 1e-3
+    "min_delta" : 1e-2
 }
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
@@ -147,7 +147,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], dim=256, depth=6, heads=6, head_dims=128, dropout=0.25, scale_dim=4)
+model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=3, height=224, width=224, dim=256, depth=6, heads=6, head_dims=256, dropout=0.25, scale_dim=4)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())

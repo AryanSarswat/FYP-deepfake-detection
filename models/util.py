@@ -1,4 +1,5 @@
 import math
+import typing
 
 import numpy as np
 import torch
@@ -98,7 +99,7 @@ def resized_crop(clip, i, j, h, w, size, interpolation_mode="bilinear"):
 
 random_gaussian_blur = lambda p : transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))], p=p)
 
-d
+
 # TODO Fix for Videos
 flip_and_jitter = transforms.Compose(
     [
@@ -155,9 +156,9 @@ class RandomResizedCropVideo(transforms.RandomResizedCrop):
 
 # TODO Add the frame rate augmentation
 class DataAugmentation:
-    def __init__(self, frame_crop_scale: tuple[float, float] = (0.9, 0.3), 
-                       global_crops_scale: tuple[float, float] = (0.4, 1), 
-                       local_crops_scale: tuple[float, float] = (0.05, 0.4), 
+    def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
+                       global_crops_scale: tuple = (0.4, 1), 
+                       local_crops_scale: tuple = (0.05, 0.4), 
                        n_local_crops: int = 8, size: int = 256):
         
         self.n_local_crops = n_local_crops
