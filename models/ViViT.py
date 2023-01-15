@@ -102,7 +102,8 @@ def create_model(num_frames: int, patch_size: int, in_channels: int, height: int
     return ViViT(num_frames, patch_size, in_channels, height, width, dim, depth, heads, head_dims, dropout, scale_dim)
 
 def load_model(path: str):
-    model = torch.load(path)
+    model = create_model(num_frames=16, patch_size=16, in_channels=3, height=256, width=256, dim=192, depth=6, heads=6, head_dims=64, dropout=0, scale_dim=4)
+    model = model.load_state_dict(torch.load(path))
     return model
         
 if __name__ == '__main__':
