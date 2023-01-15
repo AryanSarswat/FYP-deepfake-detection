@@ -200,7 +200,7 @@ try:
             LOWEST_LOSS = val_loss
             SAVED_ONCE = True
 
-        if abs(delta) < args['min_delta'] or delta > 0:
+        if abs(delta) < args['min_delta'] or val_loss > LOWEST_LOSS:
             patience += 1
             if val_loss < previous_loss:
                 print(f"[INFO] Validation Loss improved by {delta:.2e}")
