@@ -2,16 +2,13 @@ from math import ceil
 
 import torch
 import torch.nn.functional as F
-from EfficientNetV2 import create_efficientnetv2_backbone
+from .EfficientNetV2 import create_efficientnetv2_backbone
 from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
-<<<<<<< HEAD:CvT/CvT.py
 from .layers import TransformerBlock
-=======
->>>>>>> 64d624b8d30635bffc6ec75524d5e7b8f7063f58:models/CvT.py
 from torch import nn
 from torchsummary import summary
-from Transformer import Transformer
+from .Transformer import Transformer
 
 
 class ConvolutionalVisionTransformer(nn.Module):
@@ -86,13 +83,13 @@ def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0.
     
 def load_model(model_path):
     model = torch.load(model_path)
+    model.eval()
     return model
         
         
 if __name__ == '__main__':
     HEIGHT = 256
     WIDTH = 256
-<<<<<<< HEAD:CvT/CvT.py
     NUM_FRAMES = 32
     
     test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
@@ -101,13 +98,4 @@ if __name__ == '__main__':
     print(f"Shape of output : {result.shape}")
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cuda'))
-=======
-    NUM_FRAMES = 8
     
-    
-    test = torch.randn(1, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
-    model = create_model(num_frames=NUM_FRAMES).cuda()
-    output = model(test)
-    print(output.shape)
-    print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH)))
->>>>>>> 64d624b8d30635bffc6ec75524d5e7b8f7063f58:models/CvT.py

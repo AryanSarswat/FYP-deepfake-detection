@@ -16,12 +16,14 @@ FILES_PATH = 'dfdc/train_sample_videos'
 DEST_PATH = 'dfdc/videos_32'
 
 df = pd.DataFrame(columns=['filename', 'label'])
-METADATA_JSON = 'metadata.json'
+METADATA_JSON = 'dfdc/train_sample_videos/metadata.json'
 
 train_files = json.load(open(METADATA_JSON))
 
 for key, value in train_files.items():
-    df.loc[len(df)] = (key.replace('.mp4', ''), 1 if value['label'] == 'FAKE' else 0)
+    key = key.replace(".mp4",'')
+    key = os.path.join(DEST_PATH, key)
+    df.loc[len(df)] = (key, 1 if value['label'] == 'FAKE' else 0)
     
 print(df.head())
 
@@ -60,6 +62,6 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         
 if __name__ == "__main__":
     print("[INFO] Preprocessing Test videos...")
-    preprocess(FILES_PATH, DEST_PATH)
-    
+    #preprocess(FILES_PATH, DEST_PATH)
+    df.to_csv("dfdc/videos_32/test_videos.csv", index=False) 
     

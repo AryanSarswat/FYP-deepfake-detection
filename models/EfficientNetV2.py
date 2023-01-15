@@ -4,7 +4,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from layers import ConvBNAct, MBConv, StochasticDepth
+from .layers import ConvBNAct, MBConv, StochasticDepth
 from torchsummary import summary
 
 

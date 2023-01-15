@@ -3,14 +3,13 @@ import os
 import numpy as np
 from tqdm import tqdm
 import typing
-from matplotlib import pyplot as plt
 from scipy.fftpack import dct
 
 REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
 FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
-DEST_PATH = 'videos_pickled/'
+DEST_PATH = 'videos16_pickled/'
 
-def preprocess(path: str, is_real: bool = True):
+def preprocess(path: str, is_real: bool = True, num_frames: int = 32, fft: bool = False, dct: bool = False):
     if is_real:
         dest_path = os.path.join(DEST_PATH, 'real')
     else:
@@ -23,21 +22,21 @@ def preprocess(path: str, is_real: bool = True):
     for dirpath, dirnames, filenames in tqdm(os.walk(path), total=num_dir):
         for filename in filenames:
             if filename.endswith('.mp4'):                              
-                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename))
+                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename), num_frames=num_frames, fft=fft, dct=dct)
 
 def convert_video_to_images(src_path: str, dest_path: str, num_frames: int = 32, fft: bool = False, dct: bool = False):
     # Load Videos
     vidcap = cv2.VideoCapture(src_path)
-    
     
     total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
     
     # Get the frame number to extract
     idxs = np.linspace(0, total_frames, num=num_frames, endpoint=False, dtype=int)
     
-    dest_path = dest_path.replace('.mp4', '')
-    os.makedirs(dest_path, exist_ok=True)
+    dest_path = dest_path.replace('.mp4', '.npz')
     
+    frames = []
+
     for idx, frame_num in enumerate(idxs):
         vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
         success, image = vidcap.read()
@@ -46,7 +45,7 @@ def convert_video_to_images(src_path: str, dest_path: str, num_frames: int = 32,
             print(f"[INFO] Error reading frame from {src_path}")
             break
         
-        image = cv2.resize(image, (256, 256))
+        image = cv2.resize(image, (224, 224))
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         
         if fft:
@@ -58,10 +57,11 @@ def convert_video_to_images(src_path: str, dest_path: str, num_frames: int = 32,
         if dct: 
             image = np.concatenate((image, dct_img), axis=2)
 
-        path_to_save = os.path.join(dest_path, f'{idx}.npy')
-        np.save(path_to_save, image)
+        frames.append(image) 
         
-        
+    to_save = np.stack(frames, axis=2)
+    np.savez_compressed(dest_path, to_save)
+
 def img_fast_fourier_transform(img):
     img = np.fft.fftshift(np.fft.fft2(img))
     real = img.real # H X W X C
@@ -83,7 +83,7 @@ def normalize_255(img):
     return img
         
 if __name__ == "__main__":
-    #print("[INFO] Preprocessing real videos...")
-    #preprocess(REAL_PATH)
-    #print("[INFO] Preprocessing fake videos...")
-    #preprocess(FAKE_PATH, isReal=False)
+    print("[INFO] Preprocessing real videos...")
+    preprocess(REAL_PATH, num_frames=16, fft=True)
+    print("[INFO] Preprocessing fake videos...")
+    preprocess(FAKE_PATH, num_frames=16, isReal=False, fft=True)
