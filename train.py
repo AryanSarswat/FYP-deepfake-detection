@@ -70,7 +70,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_f1 = 0
     idx = 0
     
-    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss} - Running accuracy: {epoch_acc}", total=len(data_loader))
+    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
     
     for idx, (X, y) in pbar:
         X = X.to(device)
@@ -99,7 +99,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
         
-        pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1)} - Running accuracy: {epoch_acc / (idx + 1)}")
+        pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
     
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
@@ -120,7 +120,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
     epoch_f1 = 0
     idx = 0
     with torch.no_grad():
-        pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss} - Running accuracy: {epoch_acc}", total=len(data_loader))
+        pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
         
         for idx, (X, y) in pbar:
             X = X.to(device)
@@ -144,7 +144,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
             
-            pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1)} - Running accuracy: {epoch_acc / (idx + 1)}")
+            pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
 
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
