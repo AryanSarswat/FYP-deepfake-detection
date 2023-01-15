@@ -21,10 +21,10 @@ torch.backends.cudnn.enabled = True
 
 args = {
     "epochs": 50,
-    "batch_size": 50,
+    "batch_size": 45,
     "num_frames" : 16,
-    "architecture": "ViViT_weighted",
-    "save_path": "checkpoints/ViViT_weighted",
+    "architecture": "ViViT_weighted_w_spt_lsa",
+    "save_path": "checkpoints/ViViT_weighted_spt_lsa",
     "optimizer": "Adam",
     "patience" : 3,
     "lr" : 2e-5,
@@ -147,7 +147,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=3, height=224, width=224, dim=256, depth=6, heads=6, head_dims=256, dropout=0.25, scale_dim=4)
+model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=3, height=224, width=224, dim=256, depth=6, heads=6, head_dims=256, dropout=0.25, scale_dim=4, spt=True, lsa=True)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
@@ -160,7 +160,7 @@ class weighted_binary_cross_entropy(nn.Module):
         super(weighted_binary_cross_entropy, self).__init__()
     
     def forward(self, output, target):
-        loss = (0.5 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
+        loss = (0.45 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
         return torch.neg(torch.mean(loss))
 
 criteria = weighted_binary_cross_entropy()
