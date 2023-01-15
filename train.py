@@ -70,7 +70,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_f1 = 0
     idx = 0
     
-    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {running_loss} - Running accuracy: {running_accuracy}", total=len(data_loader))
+    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss} - Running accuracy: {epoch_acc}", total=len(data_loader))
     
     for idx, (X, y) in pbar:
         X = X.to(device)
@@ -120,7 +120,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
     epoch_f1 = 0
     idx = 0
     with torch.no_grad():
-        pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {running_loss} - Running accuracy: {running_accuracy}", total=len(data_loader))
+        pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss} - Running accuracy: {epoch_acc}", total=len(data_loader))
         
         for idx, (X, y) in pbar:
             X = X.to(device)
