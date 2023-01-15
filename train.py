@@ -21,10 +21,10 @@ torch.backends.cudnn.enabled = True
 
 args = {
     "epochs": 50,
-    "batch_size": 6,
-    "num_frames" : 32,
-    "architecture": "CvT",
-    "save_path": "checkpoints/CvT" + ".pth",
+    "batch_size": 18,
+    "num_frames" : 16,
+    "architecture": "CvT_weighted",
+    "save_path": "checkpoints/CvT",
     "optimizer": "Adam",
     "patience" : 3,
     "lr" : 2e-5,
@@ -48,7 +48,7 @@ test_transforms = albumentations.Compose([
     albumentations.Normalize(),
 ])
 
-PATH = 'videos/data_video.csv'
+PATH = 'videos_16/data_video.csv'
 
 df = pd.read_csv(PATH)
 X = df['video_path'].values

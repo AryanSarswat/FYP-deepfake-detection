@@ -54,7 +54,7 @@ class DataLoaderWrapper(DataLoader):
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
 
 if __name__ == "__main__":
-    PATH = 'videos/data_video.csv'
+    PATH = 'videos_16/data_video.csv'
 
     df = pd.read_csv(PATH)
     X = df['video_path'].values
@@ -63,16 +63,10 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}") 
-        print(f"[INFO] Max of training data : {torch.max(X_sample)}")
-        print(f"[INFO] Training data type : {X_sample.dtype}")
-        print(f"[INFO] Training label type : {y_sample.dtype}")
-        break
     
-    print(df.head())
 
     for path in tqdm(X):
         num_frames = len(os.listdir(path))
-        if (num_frames != 32):
-            print(f"[ERROR] Path {path} does not have 32 frames exactly")
-    print(f"train: {len(train)}, test: {len(test)}")
+        if (num_frames != 16):
+            print(f"[ERROR] Path {path} does not have 16 frames exactly")
     

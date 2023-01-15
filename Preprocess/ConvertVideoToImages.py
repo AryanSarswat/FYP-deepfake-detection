@@ -6,9 +6,11 @@ from tqdm import tqdm
 
 REAL_PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
 FAKE_PATH = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/'
-DEST_PATH = 'videos/'
+TEST_PATH = 'dfdc/'
+TEST_DEST_PATH = 'dfdc_32'
+DEST_PATH = 'videos_16/'
 
-def preprocess(path, isReal=True):
+def preprocess(path, isReal=True, num_frames=32):
     if isReal:
         dest_path = os.path.join(DEST_PATH, 'real')
     else:
@@ -21,7 +23,7 @@ def preprocess(path, isReal=True):
     for dirpath, dirnames, filenames in tqdm(os.walk(path), total=num_dir):
         for filename in filenames:
             if filename.endswith('.mp4'):                              
-                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename))
+                convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename), num_frames=num_frames)
 
 def convert_video_to_images(src_path, dest_path, num_frames=32):
     vidcap = cv2.VideoCapture(src_path)
@@ -40,7 +42,7 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         if not success:
             break
         
-        image = cv2.resize(image, (256, 256))
+        image = cv2.resize(image, (224, 224))
 
         path_to_save = os.path.join(dest_path, f'{idx}.jpg')
         cv2.imwrite(path_to_save, image)
@@ -48,7 +50,6 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         
 if __name__ == "__main__":
     #print("[INFO] Preprocessing real videos...")
-    #preprocess(REAL_PATH)
-    print("[INFO] Preprocessing fake videos...")
-    preprocess(FAKE_PATH, isReal=False)
-        
+    #preprocess(REAL_PATH, num_frames=16)
+    #print("[INFO] Preprocessing fake videos...")
+    #preprocess(FAKE_PATH, isReal=False, num_frames=16)

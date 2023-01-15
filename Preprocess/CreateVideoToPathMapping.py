@@ -3,8 +3,8 @@ import os
 import pandas as pd
 from tqdm import tqdm
 
-REAL_PATH = 'videos/real/'
-FAKE_PATH = 'videos/fake/'
+REAL_PATH = 'videos_16/real/'
+FAKE_PATH = 'videos_16/fake/'
 
 def get_all_videos(path):
     video_paths = []
@@ -36,4 +36,4 @@ for video in tqdm(FAKE_VIDEOS):
 print(df.head())
 print("[INFO] Saving as CSV")
 
-df.to_csv('videos/data_video.csv', index=False)
+df.to_csv('videos_16/data_video.csv', index=False)

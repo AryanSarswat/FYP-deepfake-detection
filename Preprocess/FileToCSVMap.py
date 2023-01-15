@@ -5,8 +5,8 @@ import pandas as pd
 from imutils import paths
 from tqdm import tqdm
 
-FILE_PATH = 'dfdc/images/'
-SAVE_PATH = 'dfdc/images/'
+FILE_PATH = 'videos_16/'
+SAVE_PATH = 'videos_16/'
 
 image_paths = list(paths.list_images(FILE_PATH))
 

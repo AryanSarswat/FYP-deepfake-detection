@@ -7,7 +7,7 @@ from sklearn.metrics import (accuracy_score, classification_report, f1_score,
 from tqdm import tqdm
 
 
-from DatasetLoader.ImageDataset import DataLoaderWrapper
+from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import load_model
 
 
@@ -58,15 +58,15 @@ def validate(model, data_loader):
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
-    model = load_model('efficient_net_baseline.pth')
+    model = load_model('checkpoints/CvT_weighted_loss.pth')
+    print(model) 
     model = model.to(device)
     model.eval()
-    print(model)
     
-    PATH = './dfdc/images/data.csv' 
+    PATH = './dfdc/videos_32/test_videos.csv' 
 
     df = pd.read_csv(PATH)
-    X = df['image_path'].values
+    X = df['file_path'].values
     y = df['label'].values
 
     print(f"X: {X.shape}, y: {y.shape}")
@@ -76,7 +76,7 @@ if __name__ == '__main__':
         albumentations.Normalize(),
     ])
 
-    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=32, shuffle=False)
+    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=6, shuffle=False)
     
     validate(model, train_loader)
     
