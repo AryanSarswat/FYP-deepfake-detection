@@ -98,7 +98,6 @@ def resized_crop(clip, i, j, h, w, size, interpolation_mode="bilinear"):
 
 random_gaussian_blur = lambda p : transforms.RandomApply([transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))], p=p)
 
-d
 # TODO Fix for Videos
 flip_and_jitter = transforms.Compose(
     [
