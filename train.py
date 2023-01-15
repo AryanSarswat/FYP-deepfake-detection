@@ -209,7 +209,7 @@ try:
         else:
             patience = 0
         
-        if patience > args["patience"]:
+        if patience >= args["patience"]:
             print("[INFO] No improvement in Validation loss Early Stopping")
             break
         

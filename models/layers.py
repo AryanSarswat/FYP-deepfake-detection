@@ -10,6 +10,33 @@ from torch import nn
 from torchsummary import summary
 
 
+class ShiftedPatchTokenization(nn.Module):
+    def __init__(self, dim: int, patch_size: int, channels=3):
+        """
+        Module for patch tokenization. taken from https://arxiv.org/pdf/2112.13492.pdf
+
+        Args:
+            dim (int): Dimension of patch token.
+            patch_size (int): Size of patch.
+            channels (int, optional): Number of input channels. Defaults to 3.
+        """
+        super(ShiftedPatchTokenization, self).__init__()
+        patch_dim = patch_size * patch_size * 5 * channels
+        self.to_patch_tokens = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_size, p2=patch_size),
+            nn.LayerNorm(patch_dim),
+            nn.Linear(patch_dim, dim)
+        )
+        
+    def forward(self, x):
+        B, T, C , H, W = x.shape
+        x = rearrange(x, 'b t c h w -> (b t) c h w')
+        shifts = ((1, -1, 0, 0), (-1, 1, 0, 0), (0, 0, 1, -1), (0, 0, -1, 1))
+        shifted_x = list(map(lambda shift: F.pad(x, shift), shifts))
+        x_with_shifts = torch.cat((x, *shifted_x), dim = 1)
+        tokens = self.to_patch_tokens(x_with_shifts)
+        return tokens
+    
 class PatchEmbedding(nn.Module):
     def __init__(self, img_size: int = 224, patch_size: int = 16, in_channels: int = 3, embed_dim: int = 768):
         """
@@ -34,7 +61,49 @@ class PatchEmbedding(nn.Module):
         x = self.proj(x)
         x = rearrange(x, '(b t) c h w -> (b t) (h w) c', t=T, b=B)
         return x
-            
+
+class LSA(nn.Module):
+    def __init__(self, token_dim: int, head_dims: int, heads: int = 8, dropout: float = 0.) -> None:
+        """Constructor for Localized-Self-Attention.
+        
+        Args:
+            token_dim (int): size of token dimension.
+            head_dim (int): size of hidden dimension.
+            heads (int, optional): Number of heads for layer. Defaults to 8.
+        """
+        super(LSA, self).__init__()
+        inner_dim = head_dims * heads
+        self.heads = heads
+        self.temperature = nn.Parameter(torch.log(torch.tensor(head_dims ** -0.5)))
+        self.dropout = nn.Dropout(dropout)
+        
+        self.to_qkv = nn.Linear(token_dim, inner_dim * 3, bias=False)
+        
+        self.unify_heads = nn.Sequential(
+            nn.Linear(inner_dim, token_dim),
+            nn.Dropout(dropout)
+        )
+    
+    def forward(self, x):
+        qkv = self.to_qkv(x).chunk(3, dim=-1)
+        queries, keys, values = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
+        
+        
+        dots = einsum(queries, keys, 'b h t1 d, b h t2 d -> b h t1 t2') * self.temperature.exp()
+        
+        mask = torch.eye(dots.shape[-1], device=dots.device, dtype=torch.bool)
+        mask_value = -torch.finfo(dots.dtype).max
+        dots = dots.masked_fill(mask, mask_value)
+        
+        
+        attn = F.softmax(dots, dim=-1)
+        attn = self.dropout(attn)
+        
+        out = einsum(attn, values, 'b h t1 t2, b h t2 d -> b h t1 d')
+        out = rearrange(out, 'b h t d -> b t (h d)')
+        
+        out = self.unify_heads(out)
+        return out
 
 class MHSA(nn.Module):
     """Class for Multi-Headed Self-Attention.
@@ -61,12 +130,9 @@ class MHSA(nn.Module):
         )
     
     def forward(self, x):
-        batch_size, patch_size, dim = x.shape
-        heads = self.heads
-        
         qkv = self.to_qkv(x).chunk(3, dim=-1)
         
-        queries, keys, values = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=heads), qkv)
+        queries, keys, values = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.heads), qkv)
         
         
         dot = einsum(queries, keys, 'b h t1 d, b h t2 d -> b h t1 t2') * self.scale
@@ -81,7 +147,7 @@ class MHSA(nn.Module):
 class TransformerBlock(nn.Module):
     """Class for Transformer Block.
     """
-    def __init__(self, token_dims: int, mlp_dims: int, head_dims: int, heads: int = 8, dropout: float = 0.):
+    def __init__(self, token_dims: int, mlp_dims: int, head_dims: int, heads: int = 8, dropout: float = 0., lsa: bool = False):
         """
         Class for Transformer Block.
 
@@ -94,7 +160,7 @@ class TransformerBlock(nn.Module):
         """
         super().__init__()
         
-        self.attention = MHSA(token_dim=token_dims, head_dims=head_dims, heads=heads)
+        self.attention = MHSA(token_dim=token_dims, head_dims=head_dims, heads=heads) if not lsa else LSA(token_dim=token_dims, head_dims=head_dims, heads=heads)
 
         self.norm1 = nn.LayerNorm(token_dims)
         self.norm2 = nn.LayerNorm(token_dims)

@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
+from scipy.fftpack import dct
 
 
 class VideoDataset(Dataset):
@@ -18,6 +19,9 @@ class VideoDataset(Dataset):
         self.num_frames = num_frames
         self.aug = transforms
         self.pickle = pickle
+        self.fft = fft
+        self.dct = dct
+        assert not (self.fft and self.dct), "Cannot use both fft and dct"
         
     def read_video(self, path):
         frames = []
@@ -29,9 +33,19 @@ class VideoDataset(Dataset):
             else:
                 frame = cv2.imread(os.path.join(path, file))
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            if self.fft:
+                to_concat = img_fast_fourier_transform(frame)
+            elif self.dct:
+                to_concat = img_discrete_cosine_transform(frame)
+
+            # Normalize to 0-1
+            frame = frame / 255
+            
+            if self.fft or self.dct:
+                frame = np.concatenate((frame, to_concat), axis=2)
                 
             frame = frame.transpose(2,0,1)
-            frame = frame / 255
             frame = torch.tensor(frame, dtype=torch.float)
             frames.append(frame)
         
@@ -52,6 +66,26 @@ class DataLoaderWrapper(DataLoader):
     def __init__(self, X, y, transforms, stride=128, batch_size=1, shuffle=False):
         dataset = VideoDataset(X, y, stride, transforms=transforms)
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
+
+def normalize_255(img):
+    img = (img - img.min()) / (img.max() - img.min()) * 255
+    return img     
+        
+def img_fast_fourier_transform(img):
+    img = np.fft.fftshift(np.fft.fft2(img))
+    real = img.real # H X W X C
+    imag = img.imag # H X W X C
+    real = normalize_255(real)
+    imag = normalize_255(imag)
+    fourier = np.concatenate((real, imag), axis=2)
+    return fourier
+    
+def img_discrete_cosine_transform(img):
+    r = normalize_255(dct(dct(img[:, :, 0], axis=0), axis=1))
+    g = normalize_255(dct(dct(img[:, :, 1], axis=0), axis=1))
+    b = normalize_255(dct(dct(img[:, :, 2], axis=0), axis=1))
+    dct = np.stack((r, g, b), axis=2)
+    return dct
 
 if __name__ == "__main__":
     PATH = 'videos_16/data_video.csv'
