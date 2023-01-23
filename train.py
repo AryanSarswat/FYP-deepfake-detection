@@ -77,24 +77,30 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_recall = 0
     epoch_f1 = 0
     idx = 0
+    scaler = torch.cuda.amp.GradScaler()
     
     pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
     
     for idx, (X, y) in pbar:
-        X = X.to(device)
-        y = y.to(device)
+        X = X.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
         
-        y_pred = model(X)
-        
-        loss = criteria(y_pred, y)
+        with torch.autocast(device_type='cuda', dtype=ptdtype):
+            y_pred = model(X)
+            loss = criteria(y_pred, y)
+            
+            
         epoch_loss += loss.item()
         
         # Append Statistics
         y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # Update every other batch simulating gradient accumulation
+        if idx % 2 == 0 or idx == len(data_loader) - 1:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
         
         y_pred_cpu = y_pred.detach().cpu().numpy()
         y_cpu = y.detach().cpu().numpy()
@@ -132,12 +138,13 @@ def validate_epoch(model, data_loader, criteria, epoch):
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
         
         for idx, (X, y) in pbar:
-            X = X.to(device)
-            y = y.to(device)
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
 
-            y_pred = model(X)
+            with torch.autocast(device_type='cuda', dtype=ptdtype):
+                y_pred = model(X)
+                loss = criteria(y_pred, y)
 
-            loss = criteria(y_pred, y)
             epoch_loss += loss.item()
 
             y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
