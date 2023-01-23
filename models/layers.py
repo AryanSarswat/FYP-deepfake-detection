@@ -8,7 +8,7 @@ from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchsummary import summary
-from util import trunc_normal_, DropPath
+from .util import trunc_normal_, DropPath
 
 
 class ShiftedPatchTokenization(nn.Module):
@@ -62,6 +62,38 @@ class PatchEmbedding(nn.Module):
         x = self.proj(x)
         x = rearrange(x, '(b t) c h w -> (b t) (h w) c', t=T, b=B)
         return x
+
+class PatchEmbedding3D(nn.Module):
+    def __init__(self, patch_size=(2,4,4), in_channels=3, embed_dim=96, norm_layer=None):
+        super().__init__()
+        self.patch_size = patch_size
+        self.in_channels = in_channels
+        self.embed_dims = embed_dim
+        
+        self.proj = nn.Conv3d(in_channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        if norm_layer is not None:
+            self.norm = norm_layer(embed_dim)
+        else:
+            self.norm = None
+            
+    def forward(self, x):
+        B, T, C, H, W = x.shape
+        
+        if W % self.patch_size[2] != 0:
+            x = F.pad(x, (0, self.patch_size[2] - W % self.patch_size[2]))
+        if H % self.patch_size[1] != 0:
+            x = F.pad(x, (0, 0, 0, self.patch_size[1] - H % self.patch_size[1]))
+        if T % self.patch_size[0] != 0:
+            x = F.pad(x, (0, 0, 0, 0, 0, self.patch_size[0] - T % self.patch_size[0]))
+        
+        x = self.proj(x)
+        if self.norm is not None:
+            T, Wh, Ww = x.shape[2:]
+            x = x.flatten(2).transpose(1, 2)
+            x = self.norm(x)
+            x = x.transpose(1, 2).view(B, T, self.embed_dims, Wh, Ww)
+        return x
+        
 
 class LSA(nn.Module):
     def __init__(self, token_dim: int, head_dims: int, heads: int = 8, dropout: float = 0.) -> None:
@@ -498,7 +530,7 @@ class WindowAttentionGlobal3D(nn.Module):
             dim (_type_): _description_
             num_heads (_type_): _description_
             window_size (_type_): _description_
-            qkv_bias (bool, optional): _description_. Defaults to True.
+            qkv_bias (bool, optional): _description_. Defaults to True.\
             qk_scale (_type_, optional): _description_. Defaults to None.
             attn_drop (_type_, optional): _description_. Defaults to 0..
             proj_drop (_type_, optional): _description_. Defaults to 0..

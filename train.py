@@ -14,10 +14,13 @@ from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.ViViT import create_model
+from contextlib import nullcontext
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.enabled = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 args = {
     "epochs": 50,
@@ -29,14 +32,19 @@ args = {
     "patience" : 3,
     "lr" : 2e-5,
     "weight_decay": 1e-8,
-    "min_delta" : 1e-2
+    "min_delta" : 1e-2,
+    "dtype": 'float32',
 }
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16}[args['dtype']]
+ctx = nullcontext() if (not torch.cuda.is_available()) else torch.amp.autocast(device_type='cuda', dtype=ptdtype)
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
 
-wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 print(f"Using device: {device}")
 
@@ -111,6 +119,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
 
     return train_loss, train_acc, train_f1, train_precision, train_recall
 
+@torch.no_grad()
 def validate_epoch(model, data_loader, criteria, epoch):
     model.eval()
     epoch_loss = 0
@@ -158,11 +167,12 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
 model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=3, height=224, width=224, dim=256, depth=6, heads=6, head_dims=256, dropout=0.25, scale_dim=4, spt=True, lsa=True)
 model = model.to(device)
+model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+#wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
