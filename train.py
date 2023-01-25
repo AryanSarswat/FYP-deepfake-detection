@@ -14,10 +14,13 @@ from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import create_model
+from contextlib import nullcontext
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
 torch.backends.cudnn.enabled = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
 args = {
     "epochs": 50,
@@ -30,13 +33,19 @@ args = {
     "lr" : 2e-5,
     "weight_decay": 1e-2,
     "min_delta" : 1e-3
+    "min_delta" : 1e-2,
+    "dtype": 'float32',
 }
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16}[args['dtype']]
+ctx = nullcontext() if (not torch.cuda.is_available()) else torch.amp.autocast(device_type='cuda', dtype=ptdtype)
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
 
-wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 print(f"Using device: {device}")
 
@@ -69,24 +78,30 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_recall = 0
     epoch_f1 = 0
     idx = 0
+    scaler = torch.cuda.amp.GradScaler()
     
     pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
     
     for idx, (X, y) in pbar:
-        X = X.to(device)
-        y = y.to(device)
+        X = X.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
         
-        y_pred = model(X)
-        
-        loss = criteria(y_pred, y)
+        with torch.autocast(device_type='cuda', dtype=ptdtype):
+            y_pred = model(X)
+            loss = criteria(y_pred, y)
+            
+            
         epoch_loss += loss.item()
         
         # Append Statistics
         y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+        # Update every other batch simulating gradient accumulation
+        if idx % 2 == 0 or idx == len(data_loader) - 1:
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            optimizer.zero_grad(set_to_none=True)
         
         y_pred_cpu = y_pred.detach().cpu().numpy()
         y_cpu = y.detach().cpu().numpy()
@@ -111,6 +126,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
 
     return train_loss, train_acc, train_f1, train_precision, train_recall
 
+@torch.no_grad()
 def validate_epoch(model, data_loader, criteria, epoch):
     model.eval()
     epoch_loss = 0
@@ -123,12 +139,13 @@ def validate_epoch(model, data_loader, criteria, epoch):
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
         
         for idx, (X, y) in pbar:
-            X = X.to(device)
-            y = y.to(device)
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
 
-            y_pred = model(X)
+            with torch.autocast(device_type='cuda', dtype=ptdtype):
+                y_pred = model(X)
+                loss = criteria(y_pred, y)
 
-            loss = criteria(y_pred, y)
             epoch_loss += loss.item()
 
             y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
@@ -158,11 +175,12 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
 model = create_model(num_frames=args["num_frames"], dim=256, depth=6, heads=6, head_dims=128, dropout=0.25, scale_dim=4, lsa=True)
 model = model.to(device)
+model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+#wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):

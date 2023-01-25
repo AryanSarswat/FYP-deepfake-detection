@@ -46,7 +46,7 @@ class VideoDataset(Dataset):
                 frame = np.concatenate((frame, to_concat), axis=2)
                 
             frame = frame.transpose(2,0,1)
-            frame = torch.tensor(frame, dtype=torch.float)
+            frame = torch.from_numpy(frame)
             frames.append(frame)
         
         frames = torch.stack(frames)
@@ -65,7 +65,7 @@ class VideoDataset(Dataset):
 class DataLoaderWrapper(DataLoader):
     def __init__(self, X, y, transforms, stride=128, batch_size=1, shuffle=False, fft=False, dct=False):
         dataset = VideoDataset(X, y, stride, transforms=transforms, fft=fft, dct=dct)
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=4)
 
 def normalize_255(img):
     img = (img - img.min()) / (img.max() - img.min()) * 255
