@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 
 FILES_PATH = 'dfdc/train_sample_videos'
-DEST_PATH = 'dfdc/videos_32'
+DEST_PATH = 'dfdc/videos_16'
 
 df = pd.DataFrame(columns=['filename', 'label'])
 METADATA_JSON = 'dfdc/train_sample_videos/metadata.json'
@@ -37,7 +37,7 @@ def preprocess(path, dest_path):
             if filename.endswith('.mp4'):                              
                 convert_video_to_images(os.path.join(dirpath, filename), os.path.join(dest_path, filename))
 
-def convert_video_to_images(src_path, dest_path, num_frames=32):
+def convert_video_to_images(src_path, dest_path, num_frames=16):
     vidcap = cv2.VideoCapture(src_path)
     
     total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -54,7 +54,7 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         if not success:
             break
         
-        image = cv2.resize(image, (256, 256))
+        image = cv2.resize(image, (224, 224))
 
         path_to_save = os.path.join(dest_path, f'{idx}.jpg')
         cv2.imwrite(path_to_save, image)
@@ -62,6 +62,6 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         
 if __name__ == "__main__":
     print("[INFO] Preprocessing Test videos...")
-    #preprocess(FILES_PATH, DEST_PATH)
-    df.to_csv("dfdc/videos_32/test_videos.csv", index=False) 
+    preprocess(FILES_PATH, DEST_PATH)
+    df.to_csv("dfdc/videos_16/test_videos.csv", index=False) 
     

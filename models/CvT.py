@@ -14,7 +14,7 @@ from .Transformer import Transformer
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4):
+    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4, lsa=False):
         """Constructor for ViViT.
 
         Args:
@@ -41,7 +41,7 @@ class ConvolutionalVisionTransformer(nn.Module):
         # Transformer for temporal dimension
         self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, t_dim))
         self.temporal_token = nn.Parameter(torch.randn(1, 1, t_dim))
-        self.temporal_transformer = Transformer(token_dim=t_dim, depth=t_depth, head_dims=t_head_dims, heads=t_heads, mlp_dim=t_dim*scale_dim, dropout=dropout)
+        self.temporal_transformer = Transformer(token_dim=t_dim, depth=t_depth, head_dims=t_head_dims, heads=t_heads, mlp_dim=t_dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.dropout = nn.Dropout(dropout)
         
@@ -76,10 +76,10 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         return self.classifier(x)
         
-def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4):
+def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4, lsa=False):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
                                           t_dim=dim, t_depth=depth, t_heads=heads, 
-                                          t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim)
+                                          t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim, lsa=lsa)
     
 def load_model(model_path):
     model = torch.load(model_path)

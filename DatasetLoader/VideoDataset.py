@@ -63,8 +63,8 @@ class VideoDataset(Dataset):
         return video, labels
     
 class DataLoaderWrapper(DataLoader):
-    def __init__(self, X, y, transforms, stride=128, batch_size=1, shuffle=False):
-        dataset = VideoDataset(X, y, stride, transforms=transforms)
+    def __init__(self, X, y, transforms, stride=128, batch_size=1, shuffle=False, fft=False, dct=False):
+        dataset = VideoDataset(X, y, stride, transforms=transforms, fft=fft, dct=dct)
         super().__init__(dataset, batch_size=batch_size, shuffle=shuffle)
 
 def normalize_255(img):
@@ -72,6 +72,7 @@ def normalize_255(img):
     return img     
         
 def img_fast_fourier_transform(img):
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2YCR_CB)
     img = np.fft.fftshift(np.fft.fft2(img))
     real = img.real # H X W X C
     imag = img.imag # H X W X C

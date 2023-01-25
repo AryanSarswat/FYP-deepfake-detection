@@ -23,7 +23,7 @@ class EfficientNetV2(nn.Module):
         self.num_block = sum([layer[5] for layer in self.layer_info])
         self.stochastic_depth = stochastic_depth
         
-        self.stem = ConvBNAct(in_channels=3, 
+        self.stem = ConvBNAct(in_channels=9, 
                               out_channels=self.in_channel, 
                               kernel_size=3, 
                               stride=2, 

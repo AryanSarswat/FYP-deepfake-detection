@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.ViViT import create_model
+from models.CvT import create_model
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -21,15 +21,15 @@ torch.backends.cudnn.enabled = True
 
 args = {
     "epochs": 50,
-    "batch_size": 45,
+    "batch_size": 16,
     "num_frames" : 16,
-    "architecture": "ViViT_weighted_w_spt_lsa",
-    "save_path": "checkpoints/ViViT_weighted_spt_lsa",
-    "optimizer": "Adam",
-    "patience" : 3,
+    "architecture": "CvT_weighted_fft_0.5_weight",
+    "save_path": "checkpoints/CvT_0.5_weighted_fft",
+    "optimizer": "AdamW",
+    "patience" : 5,
     "lr" : 2e-5,
-    "weight_decay": 1e-8,
-    "min_delta" : 1e-2
+    "weight_decay": 1e-2,
+    "min_delta" : 1e-3
 }
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
@@ -58,8 +58,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'], shuffle=True)
-test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'], shuffle=True, fft=True)
+test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'], fft=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -156,7 +156,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=3, height=224, width=224, dim=256, depth=6, heads=6, head_dims=256, dropout=0.25, scale_dim=4, spt=True, lsa=True)
+model = create_model(num_frames=args["num_frames"], dim=256, depth=6, heads=6, head_dims=128, dropout=0.25, scale_dim=4, lsa=True)
 model = model.to(device)
 
 num_parameters = sum(p.numel() for p in model.parameters())
@@ -169,11 +169,11 @@ class weighted_binary_cross_entropy(nn.Module):
         super(weighted_binary_cross_entropy, self).__init__()
     
     def forward(self, output, target):
-        loss = (0.45 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
+        loss = (0.5 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
         return torch.neg(torch.mean(loss))
 
 criteria = weighted_binary_cross_entropy()
-optimizer = torch.optim.Adam(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
+optimizer = torch.optim.AdamW(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
 
 previous_loss = np.inf
 patience = 0
