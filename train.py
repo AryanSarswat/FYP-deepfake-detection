@@ -38,7 +38,7 @@ args = {
     'dim': 256,
     'head_dims' : 256,
     'depth': 6,
-    'weight' : 0.45,
+    'weight' : 0.3,
 }
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -48,7 +48,7 @@ ctx = nullcontext() if (not torch.cuda.is_available()) else torch.amp.autocast(d
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
 
-wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 
 print(f"Using device: {device}")
@@ -71,8 +71,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'] ,shuffle=True, fft=True)
-test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'], fft=True)
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True, fft=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], fft=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -182,7 +182,7 @@ model = model.to(device)
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+#wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
