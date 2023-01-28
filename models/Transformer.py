@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from .layers import TransformerBlock
+from layers import TransformerBlock
 
 
 class Transformer(nn.Module):

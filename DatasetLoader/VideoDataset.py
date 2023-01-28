@@ -10,13 +10,16 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 from scipy.fftpack import dct
+from numba import prange
 
 
 class VideoDataset(Dataset):
-    def __init__(self, path, labels, num_frames, transforms=None, pickle=False, fft=False, dct=False):
+    def __init__(self, path, labels, num_frames, height, width, transforms=None, pickle=False, fft=False, dct=False):
         self.X = path
         self.y = labels
         self.num_frames = num_frames
+        self.height = height
+        self.width = width
         self.aug = transforms
         self.pickle = pickle
         self.fft = fft
@@ -24,14 +27,26 @@ class VideoDataset(Dataset):
         assert not (self.fft and self.dct), "Cannot use both fft and dct"
         
     def read_video(self, path):
-        frames = []
         
         files = os.listdir(path)
-        for file in files:
+        
+        NUM_FRAMES = self.num_frames
+        NUM_CHANNELS = 3 
+        
+        if self.fft:
+            NUM_CHANNELS += 6
+        elif self.dct:
+            NUM_CHANNELS += 3
+        
+        frames = torch.empty((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
+        
+        for idx in prange(NUM_FRAMES):
+            file_path = files[idx]
+            
             if self.pickle:
-                frame = np.load(os.path.join(path, file))
+                frame = np.load(os.path.join(path, file_path))
             else:
-                frame = cv2.imread(os.path.join(path, file))
+                frame = cv2.imread(os.path.join(path, file_path))
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             if self.fft:
@@ -47,9 +62,8 @@ class VideoDataset(Dataset):
                 
             frame = frame.transpose(2,0,1)
             frame = torch.from_numpy(frame)
-            frames.append(frame)
+            frames[idx] = frame
         
-        frames = torch.stack(frames)
         return frames
             
         

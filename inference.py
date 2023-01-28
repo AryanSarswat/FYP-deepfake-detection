@@ -10,7 +10,13 @@ from tqdm import tqdm
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import load_model
 
+# Optimisations
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.enabled = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 
+@torch.no_grad()
 def validate(model, data_loader):
     model.eval()
     epoch_acc = 0
@@ -72,7 +78,6 @@ if __name__ == '__main__':
     print(f"X: {X.shape}, y: {y.shape}")
     
     test_transforms = albumentations.Compose([
-        albumentations.Resize(256, 256),
         albumentations.Normalize(),
     ])
 

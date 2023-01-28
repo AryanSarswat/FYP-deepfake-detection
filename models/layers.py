@@ -8,7 +8,7 @@ from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchsummary import summary
-from .util import trunc_normal_, DropPath
+from util import trunc_normal_, DropPath
 
 
 class ShiftedPatchTokenization(nn.Module):
@@ -492,7 +492,7 @@ class WindowAttention3D(nn.Module):
         relative_position_index = relative_coords.sum(-1)  # Wt*Wh*Ww, Wt*Wh*Ww
         
         self.register_buffer("relative_position_index", relative_position_index)
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.qkv = nn.Linear(dim, dim * 3 * num_heads, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
@@ -503,8 +503,9 @@ class WindowAttention3D(nn.Module):
     def forward(self, x, mask=None):
         B, N, C = x.shape
         
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        queries, keys, values = qkv[0], qkv[1], qkv[2]   
+        qkv = self.qkv(x)
+        qkv = qkv.chunk(3, dim=-1)
+        queries, keys, values = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads), qkv)
         
         queries = queries * self.scale
         attn = queries @ keys.transpose(-2, -1)
@@ -517,7 +518,7 @@ class WindowAttention3D(nn.Module):
         attn = self.attn_drop(attn)
         x = (attn @ values).transpose(1, 2).reshape(B, N, C)
         x = self.proj(x)
-        x=  self.proj_drop(x)
+        x = self.proj_drop(x)
         return x
     
     
