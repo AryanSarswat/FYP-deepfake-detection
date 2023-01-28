@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 from scipy.fftpack import dct
-from multiprocessing import Pool 
+from numba import prange 
 
 class VideoDataset(Dataset):
     def __init__(self, path, labels, num_frames, height, width, transforms=None, pickle=False, fft=False, dct=False):
@@ -36,13 +36,11 @@ class VideoDataset(Dataset):
             NUM_CHANNELS += 6
         elif self.dct:
             NUM_CHANNELS += 3
+            
+        frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
-        pool = Pool(processes=NUM_FRAMES)
-        frames = pool.map(self.read_file, files)
-        pool.close()
-        pool.join()
-        
-        frames = torch.stack(frames)
+        for idx in prange(len(files)):
+            frames[idx] = self.read_file(files[idx])
         
         return frames
     
