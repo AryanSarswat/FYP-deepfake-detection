@@ -10,6 +10,12 @@ from tqdm import tqdm
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.ViViT import create_model, load_model
 
+# Optimisations
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.enabled = True
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 @torch.no_grad()
 def validate(model, data_loader):
     model.eval()
