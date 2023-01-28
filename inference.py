@@ -8,9 +8,9 @@ from tqdm import tqdm
 
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import load_model
+from models.ViViT import create_model, load_model
 
-
+@torch.no_grad()
 def validate(model, data_loader):
     model.eval()
     epoch_acc = 0
@@ -24,8 +24,8 @@ def validate(model, data_loader):
     
     with torch.no_grad():
         for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
-            X = X.to(device)
-            y = y.to(device)
+            X = X.to(device, non_blocking=True)
+            y = y.to(device, non_blocking=True)
 
             y_pred = model(X)
 
@@ -57,26 +57,25 @@ def validate(model, data_loader):
 
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    
-    model = load_model('checkpoints/CvT_weighted_loss.pth')
-    print(model) 
+    base_model = create_model(num_frames=16, height=224, width=224, patch_size=16, dim=256, depth=6, heads=6, head_dims=256, dropout=0, scale_dim=4, lsa=True, in_channels=6) 
+    model = load_model(base_model, 'checkpoints/ViViT_weighted_spt_lsa.pt')
     model = model.to(device)
     model.eval()
     
-    PATH = './dfdc/videos_32/test_videos.csv' 
+    PATH = './dfdc/videos_16/test_videos.csv' 
 
     df = pd.read_csv(PATH)
-    X = df['file_path'].values
+    print(df.head())
+    X = df['filename'].values
     y = df['label'].values
 
     print(f"X: {X.shape}, y: {y.shape}")
     
     test_transforms = albumentations.Compose([
-        albumentations.Resize(256, 256),
         albumentations.Normalize(),
     ])
 
-    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=6, shuffle=False)
+    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=8, shuffle=False)
     
     validate(model, train_loader)
     

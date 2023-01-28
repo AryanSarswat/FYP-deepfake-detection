@@ -46,6 +46,7 @@ class VideoDataset(Dataset):
                 frame = np.concatenate((frame, to_concat), axis=2)
                 
             frame = frame.transpose(2,0,1)
+            frame = frame.astype(np.float32)
             frame = torch.from_numpy(frame)
             frames.append(frame)
         
@@ -85,8 +86,8 @@ def img_discrete_cosine_transform(img):
     r = normalize_255(dct(dct(img[:, :, 0], axis=0), axis=1))
     g = normalize_255(dct(dct(img[:, :, 1], axis=0), axis=1))
     b = normalize_255(dct(dct(img[:, :, 2], axis=0), axis=1))
-    dct = np.stack((r, g, b), axis=2)
-    return dct
+    out = np.stack((r, g, b), axis=2)
+    return out
 
 if __name__ == "__main__":
     PATH = 'videos_16/data_video.csv'

@@ -101,9 +101,8 @@ class ViViT(nn.Module):
 def create_model(num_frames: int, patch_size: int, in_channels: int, height: int, width: int, dim: int = 192, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0, scale_dim: int = 4, spt: bool = False, lsa: bool = False):
     return ViViT(num_frames, patch_size, in_channels, height, width, dim=dim, depth=depth, heads=heads, head_dims=head_dims, dropout=dropout, scale_dim=scale_dim, spt=spt, lsa=lsa)
 
-def load_model(path: str):
-    model = create_model(num_frames=16, patch_size=16, in_channels=3, height=256, width=256, dim=192, depth=6, heads=6, head_dims=64, dropout=0, scale_dim=4)
-    model = model.load_state_dict(torch.load(path))
+def load_model(base_model, path: str):
+    model = base_model.load_state_dict(torch.load(path))
     return model
         
 if __name__ == '__main__':

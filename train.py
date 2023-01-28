@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
+from models.ViViT import create_model
 from contextlib import nullcontext
 
 # Optimisations
@@ -26,15 +26,19 @@ args = {
     "epochs": 50,
     "batch_size": 16,
     "num_frames" : 16,
-    "architecture": "CvT_weighted_fft_0.5_weight",
-    "save_path": "checkpoints/CvT_0.5_weighted_fft",
+    "architecture": "ViViT_0.45_weighted_lsa_fft",
+    "save_path": "checkpoints/ViViT_0.45_weighted_lsa_fft",
     "optimizer": "AdamW",
     "patience" : 5,
-    "lr" : 2e-5,
-    "weight_decay": 1e-2,
-    "min_delta" : 1e-3
-    "min_delta" : 1e-2,
+    "lr" : 2e-6,
+    "weight_decay": 1e-1,
+    "min_delta" : 1e-3,
     "dtype": 'float32',
+    'patch_size' : 16,
+    'dim': 256,
+    'head_dims' : 256,
+    'depth': 6,
+    'weight' : 0.45,
 }
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -44,7 +48,7 @@ ctx = nullcontext() if (not torch.cuda.is_available()) else torch.amp.autocast(d
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
 
-#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 
 print(f"Using device: {device}")
@@ -67,7 +71,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'], shuffle=True, fft=True)
+train_loader = DataLoaderWrapper(X_train, y_train, transforms=None, batch_size=args['batch_size'] ,shuffle=True, fft=True)
 test_loader = DataLoaderWrapper(X_test, y_test, transforms=None, batch_size=args['batch_size'], fft=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
@@ -80,15 +84,14 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     idx = 0
     scaler = torch.cuda.amp.GradScaler()
     
-    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
+    pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Training - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
     
     for idx, (X, y) in pbar:
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
         
-        with torch.autocast(device_type='cuda', dtype=ptdtype):
-            y_pred = model(X)
-            loss = criteria(y_pred, y)
+        y_pred = model(X)
+        loss = criteria(y_pred, y)
             
             
         epoch_loss += loss.item()
@@ -142,9 +145,8 @@ def validate_epoch(model, data_loader, criteria, epoch):
             X = X.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
-            with torch.autocast(device_type='cuda', dtype=ptdtype):
-                y_pred = model(X)
-                loss = criteria(y_pred, y)
+            y_pred = model(X)
+            loss = criteria(y_pred, y)
 
             epoch_loss += loss.item()
 
@@ -173,21 +175,21 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], dim=256, depth=6, heads=6, head_dims=128, dropout=0.25, scale_dim=4, lsa=True)
+model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=9, height=224, width=224, dim=args['dim'], depth=args['depth'], heads=6, head_dims=args['head_dims'], dropout=0.25, scale_dim=4, lsa=True)
 model = model.to(device)
-model = torch.compile(model)
+#model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-#wandb.watch(model)
+wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
         super(weighted_binary_cross_entropy, self).__init__()
     
     def forward(self, output, target):
-        loss = (0.5 * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
+        loss = (args['weight'] * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
         return torch.neg(torch.mean(loss))
 
 criteria = weighted_binary_cross_entropy()

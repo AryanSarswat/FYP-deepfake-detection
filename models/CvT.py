@@ -14,7 +14,7 @@ from .Transformer import Transformer
 class ConvolutionalVisionTransformer(nn.Module):
     """Class for Video Vision Transformer.
     """
-    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4, lsa=False):
+    def __init__(self, num_frames, t_dim=192, t_depth=4, t_heads=3, t_head_dims=64, dropout=0., scale_dim=4, lsa=False, in_channels=3):
         """Constructor for ViViT.
 
         Args:
@@ -34,7 +34,7 @@ class ConvolutionalVisionTransformer(nn.Module):
         super(ConvolutionalVisionTransformer, self).__init__()
         
         # EfficientNet style Convolution to extract features from frames
-        self.efficientnet_backbone = create_efficientnetv2_backbone()
+        self.efficientnet_backbone = create_efficientnetv2_backbone(in_channels=in_channels)
         
         self.fc = nn.Linear(1280, t_dim)
     
@@ -76,15 +76,17 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         return self.classifier(x)
         
-def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4, lsa=False):
+def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4, lsa=False, in_channels=3):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
                                           t_dim=dim, t_depth=depth, t_heads=heads, 
-                                          t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim, lsa=lsa)
+                                          t_head_dims=head_dims, dropout=dropout, scale_dim=scale_dim, lsa=lsa, in_channels=in_channels)
     
-def load_model(model_path):
-    model = torch.load(model_path)
-    model.eval()
-    return model
+def load_model(base_model, weights_path):
+    weights = torch.load(weights_path)
+    base_model.load_state_dict(weights)
+
+    base_model.eval()
+    return base_model
         
         
 if __name__ == '__main__':

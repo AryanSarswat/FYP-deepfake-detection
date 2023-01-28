@@ -35,6 +35,7 @@ class ShiftedPatchTokenization(nn.Module):
         shifts = ((1, -1, 0, 0), (-1, 1, 0, 0), (0, 0, 1, -1), (0, 0, -1, 1))
         shifted_x = list(map(lambda shift: F.pad(x, shift), shifts))
         x_with_shifts = torch.cat((x, *shifted_x), dim = 1)
+        print(x_with_shifts.shape)
         tokens = self.to_patch_tokens(x_with_shifts)
         return tokens
     

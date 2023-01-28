@@ -9,7 +9,7 @@ from torchsummary import summary
 
 
 class EfficientNetV2(nn.Module):
-    def __init__(self, layer_info: typing.List[tuple], out_channels: int = 1280, num_classes: int = 0, dropout: float = 0.2, stochastic_depth: int = 0, act_layer=nn.SiLU, norm_layer=nn.BatchNorm2d):
+    def __init__(self, layer_info: typing.List[tuple], out_channels: int = 1280, num_classes: int = 0, dropout: float = 0.2, stochastic_depth: int = 0, act_layer=nn.SiLU, norm_layer=nn.BatchNorm2d, in_channels=3):
         super(EfficientNetV2, self).__init__()
         self.layer_info = layer_info
         self.norm_layer = norm_layer
@@ -23,7 +23,7 @@ class EfficientNetV2(nn.Module):
         self.num_block = sum([layer[5] for layer in self.layer_info])
         self.stochastic_depth = stochastic_depth
         
-        self.stem = ConvBNAct(in_channels=9, 
+        self.stem = ConvBNAct(in_channels=in_channels, 
                               out_channels=self.in_channel, 
                               kernel_size=3, 
                               stride=2, 
@@ -95,8 +95,8 @@ def create_model():
     model = EfficientNetV2(layer_info=EFFICIENTNETV2_S_CONFIG, num_classes=1)
     return model
 
-def create_efficientnetv2_backbone():
-    model = EfficientNetV2(layer_info=EFFICIENTNETV2_S_CONFIG)
+def create_efficientnetv2_backbone(in_channels=3):
+    model = EfficientNetV2(layer_info=EFFICIENTNETV2_S_CONFIG, in_channels=in_channels)
     return model
 
 def load_model(path):
