@@ -10,8 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
 from scipy.fftpack import dct
-from numba import prange
-
+from multiprocessing import Pool 
 
 class VideoDataset(Dataset):
     def __init__(self, path, labels, num_frames, height, width, transforms=None, pickle=False, fft=False, dct=False):
@@ -38,35 +37,39 @@ class VideoDataset(Dataset):
         elif self.dct:
             NUM_CHANNELS += 3
         
-        frames = torch.empty((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
+        pool = Pool(processes=NUM_FRAMES)
+        frames = pool.map(self.read_file, files)
+        pool.close()
+        pool.join()
         
-        for idx in prange(NUM_FRAMES):
-            file_path = files[idx]
-            
-            if self.pickle:
-                frame = np.load(os.path.join(path, file_path))
-            else:
-                frame = cv2.imread(os.path.join(path, file_path))
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            if self.fft:
-                to_concat = img_fast_fourier_transform(frame)
-            elif self.dct:
-                to_concat = img_discrete_cosine_transform(frame)
-
-            # Normalize to 0-1
-            frame = frame / 255
-            
-            if self.fft or self.dct:
-                frame = np.concatenate((frame, to_concat), axis=2)
-                
-            frame = frame.transpose(2,0,1)
-            frame = frame.astype(np.float32)
-            frame = torch.from_numpy(frame)
-            frames[idx] = frame
+        frames = torch.stack(frames)
         
         return frames
+    
+    def read_file(self, file_path):
+        if self.pickle:
+                frame = np.load(os.path.join(path, file_path))
+        else:
+            frame = cv2.imread(os.path.join(path, file_path))
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
+        if self.fft:
+            to_concat = img_fast_fourier_transform(frame)
+        elif self.dct:
+            to_concat = img_discrete_cosine_transform(frame)
+
+        # Normalize to 0-1
+        frame = frame / 255
+            
+        if self.fft or self.dct:
+            frame = np.concatenate((frame, to_concat), axis=2)
+                
+        frame = frame.astype(np.float32)
+        frame = torch.from_numpy(frame)
+        frame = frame.transpose(2,0,1)
+        frame = torch.from_numpy(frame)
+        
+        return frame            
         
     def __len__(self):
         return len(self.X)
