@@ -94,6 +94,8 @@ def img_fast_fourier_transform(img):
     imag = img.imag # H X W X C
     real = normalize_255(real)
     imag = normalize_255(imag)
+    real = np.log(real + 1)
+    imag = np.log(imag + 1)
     fourier = np.concatenate((real, imag), axis=2)
     return fourier
     
