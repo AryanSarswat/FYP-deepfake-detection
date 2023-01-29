@@ -81,7 +81,7 @@ class VideoDataset(Dataset):
 class DataLoaderWrapper(DataLoader):
     def __init__(self, X, y, transforms, num_frames=16, height=224, width=224, batch_size=1, shuffle=False, fft=False, dct=False):
         dataset = VideoDataset(X, y, height=height, width=width, num_frames=num_frames, transforms=transforms, fft=fft, dct=dct)
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=4)
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=8)
 
 def normalize_255(img):
     img = (img - img.min()) / (img.max() - img.min()) * 255
