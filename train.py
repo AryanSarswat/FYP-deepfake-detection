@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
+from models.GViViT import create_model
 from contextlib import nullcontext
 
 # Optimisations
@@ -22,23 +22,23 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.4
+weight = 0.45
 args = {
     "epochs": 50,
     "batch_size": 8,
     "num_frames" : 16,
-    "architecture": f"CvT_{weight}_weighted_lsa_fft",
-    "save_path": f"checkpoints/ViViT_{weight}_weighted_lsa_fft",
+    "architecture": f"GCViViT_{weight}_weighted_RGB",
+    "save_path": f"checkpoints/GCViViT_{weight}_weighted_RGB",
     "optimizer": "AdamW",
     "patience" : 5,
     "lr" : 2e-5,
     "weight_decay": 1e-2,
     "min_delta" : 1e-3,
     "dtype": 'float32',
-    'patch_size' : 8,
-    'dim': 256,
-    'head_dims' : 128,
-    'depth': 6,
+    'patch_size' : None,
+    'dim': 'base',
+    'head_dims' : 'base',
+    'depth': 'base',
     'weight' : weight,
 }
 
@@ -46,7 +46,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss_{args['weight']}"
 
-wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 
 print(f"Using device: {device}")
@@ -69,8 +69,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True, fft=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], fft=True)
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'])
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -119,7 +119,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-    
+        break 
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
     train_precision = epoch_precision / (idx + 1)
@@ -168,7 +168,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_auc += roc_auc_score(y_cpu, y_pred_cpu, zero_division=0)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-
+            break
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
     val_precision = epoch_precision / (idx + 1)
@@ -220,20 +220,22 @@ def test(model, data_loader):
 
 
 
-model = create_model(num_frames=args["num_frames"], in_channels=9, dim=args['dim'], depth=args['depth'], heads=8, head_dims=args['head_dims'], dropout=0.25, scale_dim=4, lsa=True)
+model = create_model(num_frames=args["num_frames"], in_channels=3)
 model = model.to(device)
 #model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+#wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
         super(weighted_binary_cross_entropy, self).__init__()
     
     def forward(self, output, target):
+        print(output.shape)
+        print(target.shape)
         loss = (args['weight'] * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
         return torch.neg(torch.mean(loss))
 
