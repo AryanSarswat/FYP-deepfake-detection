@@ -51,6 +51,8 @@ class ViViT(nn.Module):
         
         self.head = nn.Sequential(
             nn.LayerNorm(dim),
+            nn.Linear(dim, dim),
+            nn.ReLU(),
             nn.Linear(dim, 1),
             nn.Sigmoid()
         )

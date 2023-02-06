@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.ViViT import create_model
+from models.CvT import create_model
 from contextlib import nullcontext
 
 # Optimisations
@@ -22,33 +22,31 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
+weight = 0.4
 args = {
     "epochs": 50,
-    "batch_size": 16,
+    "batch_size": 8,
     "num_frames" : 16,
-    "architecture": "ViViT_0.45_weighted_lsa_fft",
-    "save_path": "checkpoints/ViViT_0.45_weighted_lsa_fft",
+    "architecture": f"CvT_{weight}_weighted_lsa_fft",
+    "save_path": f"checkpoints/ViViT_{weight}_weighted_lsa_fft",
     "optimizer": "AdamW",
     "patience" : 5,
-    "lr" : 2e-6,
-    "weight_decay": 1e-1,
+    "lr" : 2e-5,
+    "weight_decay": 1e-2,
     "min_delta" : 1e-3,
     "dtype": 'float32',
-    'patch_size' : 16,
+    'patch_size' : 8,
     'dim': 256,
-    'head_dims' : 256,
+    'head_dims' : 128,
     'depth': 6,
-    'weight' : 0.3,
+    'weight' : weight,
 }
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-ptdtype = {'float32': torch.float32, 'bfloat16': torch.bfloat16}[args['dtype']]
-ctx = nullcontext() if (not torch.cuda.is_available()) else torch.amp.autocast(device_type='cuda', dtype=ptdtype)
+args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss_{args['weight']}"
 
-args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss"
-
-#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 
 print(f"Using device: {device}")
@@ -100,7 +98,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
         # Update every other batch simulating gradient accumulation
-        if idx % 2 == 0 or idx == len(data_loader) - 1:
+        if idx % 4 == 0 or idx == len(data_loader) - 1:
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -175,14 +173,60 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
-model = create_model(num_frames=args["num_frames"], patch_size=16, in_channels=9, height=224, width=224, dim=args['dim'], depth=args['depth'], heads=6, head_dims=args['head_dims'], dropout=0.25, scale_dim=4, lsa=True)
+
+@torch.no_grad()
+def test(model, data_loader):
+    model.eval()
+    epoch_acc = 0
+    epoch_precision = 0
+    epoch_recall = 0
+    epoch_f1 = 0
+    epoch_auc = 0
+    idx = 0
+
+    preds = []
+    actual = []
+
+    for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
+        X = X.to(device, non_blocking=True)
+        y = y.to(device, non_blocking=True)
+
+        y_pred = model(X)
+        y_pred = torch.where(y_pred > 0.5, torch.one_like(y_pred), torch.zero_like(y_pred))
+
+        y_pred_cpu = y_pred.detach().cpu().numpy()
+        y_cpu = y_detach().cpu().numpy()
+
+        y_pred_cpu = y_pred_cpu.reshape(-1)
+        y_cpu = y_cpu.reshape(-1)
+
+        pred.extend(y_pred_cpu)
+        actual.extend(y_cpu)
+
+    val_acc = accuracy_score(actual, preds)
+    val_precision = precision_score(actual, preds)
+    val_recall = recall_score(actual, preds)
+    val_f1 = f1_score(actual, preds)
+    val_auc = auc_score(actual, preds)
+
+    print(f"Test Acc:{val_acc:.4f} Test F1:{val_f1:.4f} Test Precision:{val_precision:.4f} Test Recall:{val_recall:.4f} Test AUC:{val_auc:.4f}")
+
+    wandb.run.summary['test_acc'] = val_acc
+    wandb.run.summary['test_precision'] = val_precision
+    wandb.run.summary['test_recall'] = val_recall
+    wandb.run.summary['test_f1'] = val_f1
+    wandb.run.summary['test_auc'] = val_auc
+
+
+
+model = create_model(num_frames=args["num_frames"], in_channels=9, dim=args['dim'], depth=args['depth'], heads=8, head_dims=args['head_dims'], dropout=0.25, scale_dim=4, lsa=True)
 model = model.to(device)
 #model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-#wandb.watch(model)
+wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
@@ -250,8 +294,21 @@ except KeyboardInterrupt:
     torch.save(model.state_dict(), args["save_path"] + "_interrupted.pt")
     
 print("[INFO] Training Complete")
-wandb.finish()
 
 if not SAVED_ONCE:
     print("[INFO] Saving Model")
     torch.save(model.state_dict(), args["save_path"] + ".pt")
+
+# Inference
+TEST_DATA_PATH = './dfdc/videos_16/test_videos.csv'
+
+df = pd.read_csv(TEST_DATA_PATH)
+X = df['filename'].values
+y = df['label'].values
+
+inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=8, shuffle=False)
+
+test(model, inference_data)
+
+wandb.finish()
+

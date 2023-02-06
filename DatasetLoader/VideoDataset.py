@@ -40,15 +40,16 @@ class VideoDataset(Dataset):
         frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
         for idx in prange(len(files)):
-            frames[idx] = self.read_file(files[idx])
+            file_path = os.path.join(path, files[idx])
+            frames[idx] = self.read_file(file_path)
         
         return frames
     
     def read_file(self, file_path):
         if self.pickle:
-                frame = np.load(os.path.join(path, file_path))
+            frame = np.load(os.path.join(file_path))
         else:
-            frame = cv2.imread(os.path.join(path, file_path))
+            frame = cv2.imread(file_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
         if self.fft:
@@ -63,7 +64,6 @@ class VideoDataset(Dataset):
             frame = np.concatenate((frame, to_concat), axis=2)
                 
         frame = frame.astype(np.float32)
-        frame = torch.from_numpy(frame)
         frame = frame.transpose(2,0,1)
         frame = torch.from_numpy(frame)
         

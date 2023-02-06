@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.ViViT import create_model, load_model
+from models.CvT import create_model, load_model
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -63,8 +63,8 @@ def validate(model, data_loader):
 
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    base_model = create_model(num_frames=16, height=224, width=224, patch_size=16, dim=256, depth=6, heads=6, head_dims=256, dropout=0, scale_dim=4, lsa=True, in_channels=6) 
-    model = load_model(base_model, 'checkpoints/ViViT_weighted_spt_lsa.pt')
+    base_model = create_model(num_frames=16, dim=256, depth=6, heads=8, head_dims=128, dropout=0, scale_dim=4, lsa=True, in_channels=9) 
+    model = load_model(base_model, 'checkpoints/ViViT_0.4_weighted_lsa_fft.pt')
     model = model.to(device)
     model.eval()
     
@@ -81,7 +81,7 @@ if __name__ == '__main__':
         albumentations.Normalize(),
     ])
 
-    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=8, shuffle=False)
+    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=8, shuffle=False, fft=True)
     
     validate(model, train_loader)
     
