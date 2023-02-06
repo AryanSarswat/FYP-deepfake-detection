@@ -1,10 +1,10 @@
 from util import DropPath, trunc_normal_
-from layers import GlobalQueryGen, SqueezeExcitation, ReduceSize, PatchEmbedding
+from layers import GlobalQueryGen, SqueezeExcitation, ReduceSize
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange, repeat
-from functools import reduce, lru_cache
+from einops import rearrange
+from torchsummary import summary
 
 def window_partition(x, window_size):
     """
@@ -15,7 +15,7 @@ def window_partition(x, window_size):
         windows: (B*num_windows, window_size*window_size, C)
     """
     B, C, H, W = x.shape
-    x = x.view(B, H // window_size, window_size, W // window_size, window_size, C)
+    x = x.reshape(B, H // window_size, window_size, W // window_size, window_size, C)
     windows = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(-1, window_size, window_size, C)
     return windows
 
@@ -30,10 +30,20 @@ def window_reverse(windows, window_size, B, H, W):
     Returns:
         x: (B, C, H, W)
     """
-    x = windows.view(B, H // window_size, W // window_size, window_size, window_size, -1)
+    x = windows.reshape(B, H // window_size, W // window_size, window_size, window_size, -1)
     x = x.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, -1, H, W)
     return x
 
+class PatchEmbedding(nn.Module):
+    def __init__(self, in_channels=3, dim=96):
+        super().__init__()
+        self.proj = nn.Conv2d(in_channels, dim, kernel_size=3, stride=2, padding=1)
+        self.conv_down = ReduceSize(dim, reduce=False)
+    
+    def forward(self, x):
+        x = self.proj(x)
+        x = self.conv_down(x)
+        return x
 class FeatureExtract(nn.Module):
     def __init__(self, dim, reduce=True) -> None:
         super(FeatureExtract, self).__init__()
@@ -218,11 +228,14 @@ class GCViTBlock(nn.Module):
         
         # Convert back to windows
         x = window_reverse(attn_windows, self.window_size, B, H, W)
-        x = shortcut + self.drop_path(self.gamma1 * x)
-        x = x.view(B, H, W, C)
+        x = x.reshape(B, H, W, C)
+        x = self.drop_path(self.gamma1 * x)
+        x = x.reshape(B, C, H, W)
+        x = shortcut + x
+        x = x.reshape(B, H, W, C)
         # MLP
         x = x + self.drop_path(self.gamma2 * self.mlp(self.norm2(x)))
-        x = x.view(B, C, H, W)
+        x = x.reshape(B, C, H, W)
         return x
     
 class GlobalQueryGenerator(nn.Module):
@@ -297,8 +310,63 @@ class GCViTLevel(nn.Module):
         return x
     
 class GCViT(nn.Module):
-    def __init__(self) -> None:
+    def __init__(self, dim, depths, window_size, mlp_ratio, num_heads, num_classes=0, resolution=224, drop_path_rate=0.2, in_chan=3, qkv_bias=True, qk_scale=None, drop_rate=0., attn_drop_rate=0., norm_layer=nn.LayerNorm, layer_scale=None):
         super().__init__()
+        num_features = int(dim * 2 ** (len(depths) - 1))
+        self.patch_embed = PatchEmbedding(in_channels=in_chan, dim=dim)
+        self.pos_drop = nn.Dropout(p=drop_rate)
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]  # stochastic depth decay rule
+        self.levels = nn.ModuleList()
+        for i in range(len(depths)):
+            self.levels.append(
+                GCViTLevel(
+                    dim=dim * 2 ** i,
+                    depth=depths[i],
+                    input_resolution=int(2 ** (-2 - i) * resolution),
+                    img_resolution=resolution,
+                    num_heads=num_heads[i],
+                    window_size=window_size[i],
+                    downsample=(i < len(depths) - 1),
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop=drop_rate,
+                    attn_drop=attn_drop_rate,
+                    drop_path=dpr[sum(depths[:i]):sum(depths[:i + 1])],
+                    norm_layer=norm_layer,
+                    layer_scale=layer_scale))
+        self.norm = norm_layer(num_features)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        self.head = nn.Linear(num_features, 1) if num_classes > 0 else nn.Identity()
+        self.apply(self._init_weights)
+        
+    def forward_features(self, x):
+        x = self.patch_embed(x)
+        x = self.pos_drop(x)
+        
+        for level in self.levels:
+            x = level(x)
+        
+        x = x.permute(0, 2, 3, 1)
+        x = self.norm(x)
+        x = x.permute(0, 3, 1, 2)
+        x = self.avgpool(x)
+        x = x.flatten(1)
+        return x
+    
+    def forward(self, x):
+        x = self.forward_features(x)
+        x = self.head(x)
+        return x
+        
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
     
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
@@ -349,12 +417,55 @@ class GCViViT(nn.Module):
         trunc_normal_(self.temporal_embedding, std=.02)
         trunc_normal_(self.spatial_token, std=.02)
         self.apply(self._init_weights)
-        
+
+GCViT_large_config = {
+    'depths' : [3, 4, 19, 5],
+    'num_heads' : [6, 12, 24, 48],
+    'window_size' : [7, 7, 14, 7],
+    'dim' : 192,
+    'mlp_ratio' : 2,
+    'drop_path_rate' : 0.5,
+    'layer_scale' : 1e-5,
+}
+
+GCViT_base_config = {
+    'depths' : [3, 4, 19, 5],
+    'num_heads' : [4, 8, 16, 32],
+    'window_size' : [7, 7, 14, 7],
+    'dim' : 128,
+    'mlp_ratio' : 2,
+    'drop_path_rate' : 0.5,
+    'layer_scale' : 1e-5,
+}
+
+GCViT_small_config = {
+    'depths' : [3, 4, 19, 5],
+    'num_heads' : [3, 6, 12, 24],
+    'window_size' : [7, 7, 14, 7],
+    'dim' : 96,
+    'mlp_ratio' : 2,
+    'drop_path_rate' : 0.3,
+    'layer_scale' : 1e-5,
+}
+
 if __name__ == '__main__':
     
-    test = torch.randn(2, 64, 56, 56)
+    test = torch.randn(2, 3, 224, 224)
     
-    layer_test = GCViTLevel(dim=64, depth=4, input_resolution=56, img_resolution=224, num_heads=4, window_size=7, downsample=True, mlp_ratio=4, qkv_bias=True, qk_scale=None, drop=0., attn_drop=0., drop_path=0., norm_layer=nn.LayerNorm, layer_scale=None)
-    out = layer_test(test)
+    
+    
+    gcvit = GCViT(
+        depths=GCViT_base_config['depths'],
+        num_heads=GCViT_base_config['num_heads'],
+        window_size=GCViT_base_config['window_size'],
+        dim=GCViT_base_config['dim'],
+        mlp_ratio=GCViT_base_config['mlp_ratio'],
+        drop_path_rate=GCViT_base_config['drop_path_rate'],
+        layer_scale=GCViT_base_config['layer_scale'],
+    )
+    
+    summary(gcvit, (3, 224, 224), device='cpu')
+    
+    out = gcvit(test)
     
     print(out.shape)
