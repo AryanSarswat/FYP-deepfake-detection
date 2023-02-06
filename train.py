@@ -184,12 +184,6 @@ def validate_epoch(model, data_loader, criteria, epoch):
 @torch.no_grad()
 def test(model, data_loader):
     model.eval()
-    epoch_acc = 0
-    epoch_precision = 0
-    epoch_recall = 0
-    epoch_f1 = 0
-    epoch_auc = 0
-    idx = 0
 
     preds = []
     actual = []
