@@ -372,7 +372,7 @@ class GCViT(nn.Module):
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
     """
-    def __init__(self, num_frames: int, dim: int = 768, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
+    def __init__(self, num_frames: int, in_channels, dim: int = 768, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
         """Constructor for ViViT.
 
         Args:
@@ -399,6 +399,7 @@ class GCViViT(nn.Module):
             mlp_ratio=GCViT_small_config['mlp_ratio'],
             drop_path_rate=GCViT_small_config['drop_path_rate'],
             layer_scale=GCViT_small_config['layer_scale'],
+            in_chan=in_channels,
         )
         
         
@@ -463,16 +464,19 @@ GCViT_small_config = {
     'layer_scale' : 1e-5,
 }
 
+
+def create_model(num_frames, in_channels):
+    model = GCViViT(num_frames=num_frames, in_channels=in_channels)
+    return model
+
+def load_model(path, num_frames, in_channels):
+    model = create_model()
+    model.load_state_dict(torch.load(path))
+    return model
+
 if __name__ == '__main__':
-    
     test = torch.randn(2, 3, 3, 224, 224)
-    
-    
-    
     gcvit = GCViViT(num_frames=3)
-    
     summary(gcvit, (3, 3, 224, 224), device='cpu')
-    
     out = gcvit(test)
-    
     print(out.shape)

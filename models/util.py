@@ -141,11 +141,11 @@ random_gaussian_blur = lambda p : transforms.RandomApply([transforms.GaussianBlu
 flip_and_jitter = transforms.Compose(
     [
         transforms.RandomHorizontalFlip(p=0.5),
-        transforms.RandomApply(
-            [
-                transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)
-            ]
-        ),
+        # transforms.RandomApply(
+        #     [
+        #         transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)
+        #     ]
+        # ),
         transforms.RandomGrayscale(p=0.2)
     ]
 )
