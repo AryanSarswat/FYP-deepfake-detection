@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from .layers import TransformerBlock
-
+from layers import TransformerBlock
+from util import trunc_normal_
 
 class Transformer(nn.Module):
     """Class for Transformer.
@@ -25,6 +25,8 @@ class Transformer(nn.Module):
         
         for _ in range(depth):
             self.layers.append(TransformerBlock(token_dims=token_dim, mlp_dims=mlp_dim, head_dims=head_dims, heads=heads, dropout=dropout, lsa=lsa))
+            
+        self.apply(self._init_weights)
         
     def forward(self, x):
         for layer in self.layers:
@@ -32,3 +34,12 @@ class Transformer(nn.Module):
         x = self.norm(x)
         x = self.dropout(x)
         return x
+    
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if isinstance(m, nn.Linear) and m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)

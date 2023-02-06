@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim
 import wandb
 from sklearn.metrics import (accuracy_score, f1_score, precision_score,
-                             recall_score)
+                             recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
@@ -79,6 +79,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_precision = 0
     epoch_recall = 0
     epoch_f1 = 0
+    epoch_auc = 0
     idx = 0
     scaler = torch.cuda.amp.GradScaler()
     
@@ -114,6 +115,8 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+        epoch_auc += roc_auc_score(y_cpu, y_pred_cpu, zero_division=0)
+        
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
     
@@ -122,10 +125,11 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     train_precision = epoch_precision / (idx + 1)
     train_recall = epoch_recall / (idx + 1)
     train_f1 = epoch_f1 / (idx + 1)
+    train_auc = epoch_auc / (idx + 1)
 
-    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}")
+    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}, Train AUC: {train_aouc:.4f}")
 
-    return train_loss, train_acc, train_f1, train_precision, train_recall
+    return train_loss, train_acc, train_f1, train_precision, train_recall, train_auc
 
 @torch.no_grad()
 def validate_epoch(model, data_loader, criteria, epoch):
@@ -135,6 +139,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
     epoch_precision = 0
     epoch_recall = 0
     epoch_f1 = 0
+    epoch_auc = 0
     idx = 0
     with torch.no_grad():
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
@@ -160,6 +165,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+            epoch_auc += roc_auc_score(y_cpu, y_pred_cpu, zero_division=0)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
 
@@ -168,10 +174,11 @@ def validate_epoch(model, data_loader, criteria, epoch):
     val_precision = epoch_precision / (idx + 1)
     val_recall = epoch_recall / (idx + 1)
     val_f1 = epoch_f1 / (idx + 1)
+    val_auc = epoch_auc / (idx + 1)
 
-    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}")
+    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}, Validation AUC: {val_auc:.4f}")
 
-    return val_loss, val_acc, val_f1, val_precision, val_recall
+    return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc
 
 
 @torch.no_grad()
@@ -247,8 +254,8 @@ LOWEST_LOSS = np.inf
 
 try:
     for epoch in range(args['epochs']):
-        train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch)
-        val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch)
+        train_loss, train_acc, train_f1, train_precision, train_recall, train_auc = train_epoch(model, train_loader, optimizer, criteria, epoch)
+        val_loss, val_acc, val_f1, val_precision, val_recall, val_auc = validate_epoch(model, test_loader, criteria, epoch)
         
         try:
             wandb.log({
@@ -257,11 +264,13 @@ try:
                 "Train F1": train_f1,
                 "Train Precision": train_precision,
                 "Train Recall": train_recall,
+                "Train AUC": train_auc,
                 "Val Loss": val_loss,
                 "Val Acc": val_acc,
                 "Val F1": val_f1,
                 "Val Precision": val_precision,
-                "Val Recall": val_recall
+                "Val Recall": val_recall,
+                "Val AUC": val_auc,
             })
         except:
             print("[ERROR] Could not upload data, temporary connection")
