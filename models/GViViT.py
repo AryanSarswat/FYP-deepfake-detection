@@ -4,7 +4,7 @@ from .Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from einops import rearrange
+from einops import rearrange, repeat
 from torchsummary import summary
 
 def window_partition(x, window_size):
@@ -404,6 +404,7 @@ class GCViViT(nn.Module):
         
         
         self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, dim))
+        self.temporal_cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.dropout = nn.Dropout(dropout)
@@ -426,8 +427,12 @@ class GCViViT(nn.Module):
         
         # Unfold time
         x = x.reshape(B, F, -1)
+        cls_token = repeat(self.temporal_cls_token, '() n d -> b n d', b=B)
+        x = torch.cat((cls_token, x), dim=1)
         x = x + self.temporal_embedding
         x = self.temporal_transformer(x)
+        # Taking only the cls token
+        x = x[:, 0]
         x = self.dropout(x)
         
         x = self.head(x)
