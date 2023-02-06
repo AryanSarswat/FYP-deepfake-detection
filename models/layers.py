@@ -8,8 +8,7 @@ from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchsummary import summary
-from .util import trunc_normal_, DropPath
-
+from util import trunc_normal_, DropPath
 
 class ShiftedPatchTokenization(nn.Module):
     def __init__(self, dim: int, patch_size: int, channels=3):
@@ -447,155 +446,6 @@ class GlobalQueryGen(nn.Module):
         x = x.reshape(B, T, 1, self.N, self.num_heads, self.dim_head).permute(0, 1, 2, 4, 3, 5)
         return x
         
-                
-    
-class WindowAttention3D(nn.Module):
-    def __init__(self, dim: int, window_size: tuple, num_heads: int, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0.):
-        """
-        Window based multi-head self attention (W-MSA) module with relative position bias.
-        Args:
-            dim (_type_): _description_
-            window_size (_type_): _description_
-            num_heads (_type_): _description_
-            qkv_bias (bool, optional): _description_. Defaults to False.
-            qk_scale (_type_, optional): _description_. Defaults to None.
-            attn_drop (_type_, optional): _description_. Defaults to 0..
-            proj_drop (_type_, optional): _description_. Defaults to 0..
-        """
-        super().__init__()
-        self.dim = dim
-        
-        assert len(window_size) == 3, "window size must be 3D"
-        self.window_size = window_size
-        
-        
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-
-        # define a parameter table of relative position bias
-        self.relative_position_bias_table = nn.Parameter(torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1) * (2 * window_size[2] - 1), num_heads))
-
-        coords_t = torch.arange(window_size[0])
-        coords_h = torch.arange(window_size[1])
-        coords_w = torch.arange(window_size[2])
-        
-        coords = torch.stack(torch.meshgrid([coords_t, coords_h, coords_w]))  # 3, Wt, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 3, Wt*Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 3, Wt*Wh*Ww, Wt*Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wt*Wh*Ww, Wt*Wh*Ww, 3
-        relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
-        relative_coords[:, :, 1] += window_size[1] - 1
-        relative_coords[:, :, 2] += window_size[2] - 1
-        
-        relative_coords[:, :, 0] *= (2 * window_size[1] - 1) * (2 * window_size[2] - 1)
-        relative_coords[:, :, 1] *= (2 * window_size[2] - 1)
-        relative_position_index = relative_coords.sum(-1)  # Wt*Wh*Ww, Wt*Wh*Ww
-        
-        self.register_buffer("relative_position_index", relative_position_index)
-        self.qkv = nn.Linear(dim, dim * 3 * num_heads, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-        
-        trunc_normal_(self.relative_position_bias_table, std=.02)
-        self.softmax = nn.Softmax(dim=-1)
-        
-    def forward(self, x, mask=None):
-        B, N, C = x.shape
-        
-        qkv = self.qkv(x)
-        qkv = qkv.chunk(3, dim=-1)
-        queries, keys, values = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=self.num_heads), qkv)
-        
-        queries = queries * self.scale
-        attn = queries @ keys.transpose(-2, -1)
-        
-        relative_position_bias = self.relative_position_bias_table[self.relative_position_index[:N, :N].reshape(-1)].reshape(N,N,-1) # Wt*Wh*Ww, Wt*Wh*Ww, nH
-        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # nH, Wt*Wh*Ww, Wt*Wh*Ww
-        attn = attn + relative_position_bias.unsqueeze(0) # B, nH, N, N
-        
-        attn = self.softmax(attn)
-        attn = self.attn_drop(attn)
-        x = (attn @ values).transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
-    
-    
-class WindowAttentionGlobal3D(nn.Module):
-    def __init__(self, dim: int, num_heads: int, window_size: tuple, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
-        """
-        Global Window attention module
-
-        Args:
-            dim (_type_): _description_
-            num_heads (_type_): _description_
-            window_size (_type_): _description_
-            qkv_bias (bool, optional): _description_. Defaults to True.\
-            qk_scale (_type_, optional): _description_. Defaults to None.
-            attn_drop (_type_, optional): _description_. Defaults to 0..
-            proj_drop (_type_, optional): _description_. Defaults to 0..
-        """
-        super().__init__()
-        
-        self.num_heads = num_heads
-        head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
-
-        # define a parameter table of relative position bias
-        self.relative_position_bias_table = nn.Parameter(torch.zeros((2 * window_size[0] - 1) * (2 * window_size[1] - 1) * (2 * window_size[2] - 1), num_heads))
-
-        coords_t = torch.arange(window_size[0])
-        coords_h = torch.arange(window_size[1])
-        coords_w = torch.arange(window_size[2])
-        
-        coords = torch.stack(torch.meshgrid([coords_t, coords_h, coords_w]))  # 3, Wt, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 3, Wt*Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 3, Wt*Wh*Ww, Wt*Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wt*Wh*Ww, Wt*Wh*Ww, 3
-        relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
-        relative_coords[:, :, 1] += window_size[1] - 1
-        relative_coords[:, :, 2] += window_size[2] - 1
-        
-        relative_coords[:, :, 0] *= (2 * window_size[1] - 1) * (2 * window_size[2] - 1)
-        relative_coords[:, :, 1] *= (2 * window_size[2] - 1)
-        relative_position_index = relative_coords.sum(-1)  # Wt*Wh*Ww, Wt*Wh*Ww
-        
-        self.register_buffer("relative_position_index", relative_position_index)
-        self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-        
-        trunc_normal_(self.relative_position_bias_table, std=.02)
-        self.softmax = nn.Softmax(dim=-1)
-        
-    def forward(self, x , q_global):
-        B_, N, C = x.shape
-        
-        B = q_global.shape[0]
-        
-        head_dim = C // self.num_heads
-        B_dim = B_ // B
-        kv = self.kv(x).reshape(B_, N, 2, self.num_heads, head_dim).permute(2, 0, 3, 1, 4)
-        keys, values = kv[0], kv[1]
-        
-        # TODO probably incorrect here need to modify
-        queries = q_global.repeat(1, B_dim, 1, 1, 1).reshape(B_, self.num_heads, head_dim)
-        queries = queries * self.scale
-        
-        attn = queries @ keys.transpose(-2, -1)
-        relative_position_bias = self.relative_position_bias_table[self.relative_position_index[:N, :N].reshape(-1)].reshape(N,N,-1) # Wt*Wh*Ww, Wt*Wh*Ww, nH
-        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous() # nH, Wt*Wh*Ww, Wt*Wh*Ww
-        attn = attn + relative_position_bias.unsqueeze(0) # B, nH, N, N
-        attn = self.softmax(attn)
-        attn = self.attn_drop(attn)
-        x = (attn @ values).transpose(1, 2).reshape(B_, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
-        
 class ReduceSize(nn.Module):
     def __init__(self, dim, norm_layer=nn.LayerNorm, reduce=True):
         super().__init__()
@@ -603,7 +453,7 @@ class ReduceSize(nn.Module):
             nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=1, groups=dim, bias=False),
             nn.GELU(),
             SqueezeExcitation(dim),
-            nn.Conv2d(dim, dim, kernel_size=1, stride=1, padding=1, groups=dim, bias=False),
+            nn.Conv2d(dim, dim, kernel_size=1, stride=1, padding=0, bias=False),
         )
         
         if reduce:
@@ -611,13 +461,17 @@ class ReduceSize(nn.Module):
         else:
             dim_out = dim
         
-        self.reduction = nn.Conv2d(dim, dim_out * 2, kernel_size=3, stride=2, padding=1,bias=False)
+        self.reduction = nn.Conv2d(dim, dim_out, kernel_size=3, stride=2, padding=1,bias=False)
         self.norm1 = norm_layer(dim)
         self.norm2 = norm_layer(dim_out)       
         
     def forward(self, x):
+        x = x.contiguous().permute(0, 2, 3, 1)
         x = self.norm1(x)
+        x = x.permute(0, 3, 1, 2)
         x = x + self.conv(x)
         x = self.reduction(x)
+        x = x.permute(0, 2, 3, 1)
         x = self.norm2(x)
+        x = x.permute(0, 3, 1, 2)
         return x
