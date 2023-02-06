@@ -1,5 +1,6 @@
 from util import DropPath, trunc_normal_
-from layers import GlobalQueryGen, SqueezeExcitation, ReduceSize
+from layers import SqueezeExcitation, ReduceSize
+from Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -371,7 +372,7 @@ class GCViT(nn.Module):
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
     """
-    def __init__(self, num_frames: int, patch_size: int, in_channels: int, height: int, width: int, dim: int = 192, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
+    def __init__(self, num_frames: int, dim: int = 768, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
         """Constructor for ViViT.
 
         Args:
@@ -390,19 +391,19 @@ class GCViViT(nn.Module):
         """
         super().__init__()
         
-        assert height % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
-        assert width % patch_size == 0, 'Image dimensions must be divisible by the patch size.'
+        self.spatial_transformer = GCViT(
+            depths=GCViT_small_config['depths'],
+            num_heads=GCViT_small_config['num_heads'],
+            window_size=GCViT_small_config['window_size'],
+            dim=GCViT_small_config['dim'],
+            mlp_ratio=GCViT_small_config['mlp_ratio'],
+            drop_path_rate=GCViT_small_config['drop_path_rate'],
+            layer_scale=GCViT_small_config['layer_scale'],
+        )
         
-        num_patches = (height // patch_size) * (width // patch_size)
-        
-        self.to_patch_embedding = PatchEmbedding(img_size=height, patch_size=patch_size, in_channels=in_channels, embed_dim=dim)
-        
-        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches + 1, dim))
-        self.spatial_token = nn.Parameter(torch.randn(1, 1, dim))
-        self.spatial_transformer = GCViViTransformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, dim))
-        self.temporal_transformer = GCViViTransformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
+        self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.dropout = nn.Dropout(dropout)
         
@@ -413,10 +414,24 @@ class GCViViT(nn.Module):
         )
         
         # Initialize weights
-        trunc_normal_(self.pos_embedding, std=.02)
         trunc_normal_(self.temporal_embedding, std=.02)
-        trunc_normal_(self.spatial_token, std=.02)
-        self.apply(self._init_weights)
+
+    def forward(self, x):
+        B, F, C, H, W = x.shape
+        
+        # Process spatial dimensions first
+        x = x.reshape(B*F, C, H, W)
+        x = self.spatial_transformer(x)
+        
+        # Unfold time
+        x = x.reshape(B, F, -1)
+        x = x + self.temporal_embedding
+        x = self.temporal_transformer(x)
+        x = self.dropout(x)
+        
+        x = self.head(x)
+        return x    
+        
 
 GCViT_large_config = {
     'depths' : [3, 4, 19, 5],
@@ -450,21 +465,13 @@ GCViT_small_config = {
 
 if __name__ == '__main__':
     
-    test = torch.randn(2, 3, 224, 224)
+    test = torch.randn(2, 3, 3, 224, 224)
     
     
     
-    gcvit = GCViT(
-        depths=GCViT_base_config['depths'],
-        num_heads=GCViT_base_config['num_heads'],
-        window_size=GCViT_base_config['window_size'],
-        dim=GCViT_base_config['dim'],
-        mlp_ratio=GCViT_base_config['mlp_ratio'],
-        drop_path_rate=GCViT_base_config['drop_path_rate'],
-        layer_scale=GCViT_base_config['layer_scale'],
-    )
+    gcvit = GCViViT(num_frames=3)
     
-    summary(gcvit, (3, 224, 224), device='cpu')
+    summary(gcvit, (3, 3, 224, 224), device='cpu')
     
     out = gcvit(test)
     
