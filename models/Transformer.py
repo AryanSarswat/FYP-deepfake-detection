@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from .layers import TransformerBlock
-from .util import trunc_normal_
+from layers import TransformerBlock
+from util import trunc_normal_
 
 class Transformer(nn.Module):
     """Class for Transformer.

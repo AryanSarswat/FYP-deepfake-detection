@@ -1,6 +1,6 @@
-from .util import DropPath, trunc_normal_
-from .layers import SqueezeExcitation, ReduceSize
-from .Transformer import Transformer
+from util import DropPath, trunc_normal_
+from layers import SqueezeExcitation, ReduceSize
+from Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -392,18 +392,18 @@ class GCViViT(nn.Module):
         super().__init__()
         
         self.spatial_transformer = GCViT(
-            depths=GCViT_small_config['depths'],
-            num_heads=GCViT_small_config['num_heads'],
-            window_size=GCViT_small_config['window_size'],
-            dim=GCViT_small_config['dim'],
-            mlp_ratio=GCViT_small_config['mlp_ratio'],
-            drop_path_rate=GCViT_small_config['drop_path_rate'],
-            layer_scale=GCViT_small_config['layer_scale'],
+            depths=GCViT_tiny_config['depths'],
+            num_heads=GCViT_tiny_config['num_heads'],
+            window_size=GCViT_tiny_config['window_size'],
+            dim=GCViT_tiny_config['dim'],
+            mlp_ratio=GCViT_tiny_config['mlp_ratio'],
+            drop_path_rate=GCViT_tiny_config['drop_path_rate'],
+            layer_scale=GCViT_tiny_config['layer_scale'],
             in_chan=in_channels,
         )
         
         
-        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, dim))
+        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
         self.temporal_cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
@@ -469,6 +469,16 @@ GCViT_small_config = {
     'layer_scale' : 1e-5,
 }
 
+GCViT_tiny_config = {
+    'depths' : [3, 4, 19, 5],
+    'num_heads' : [2, 4, 8, 16],
+    'window_size' : [7, 7, 14, 7],
+    'dim' : 64,
+    'mlp_ratio' : 3,
+    'drop_path_rate' : 0.2,
+    'layer_scale' : 1e-5,
+}
+
 
 def create_model(num_frames, in_channels):
     model = GCViViT(num_frames=num_frames, in_channels=in_channels)
@@ -481,7 +491,7 @@ def load_model(path, num_frames, in_channels):
 
 if __name__ == '__main__':
     test = torch.randn(2, 3, 3, 224, 224)
-    gcvit = GCViViT(num_frames=3)
-    summary(gcvit, (3, 3, 224, 224), device='cpu')
+    gcvit = GCViViT(num_frames=3, in_channels=3)
+    #summary(gcvit, (3, 3, 224, 224), device='cpu')
     out = gcvit(test)
     print(out.shape)
