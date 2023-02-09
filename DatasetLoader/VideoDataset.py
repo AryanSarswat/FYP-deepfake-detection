@@ -77,7 +77,7 @@ class VideoDataset(Dataset):
     def __getitem__(self, idx):
         video = self.read_video(self.X[idx])
         if self.aug:
-            video = self.aug(image=video)
+            video = self.aug(img=video)
         labels = torch.tensor(self.y[idx], dtype=torch.float)
         labels = torch.unsqueeze(labels, 0)
         return video, labels

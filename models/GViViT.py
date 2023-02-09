@@ -1,6 +1,6 @@
-from util import DropPath, trunc_normal_
-from layers import SqueezeExcitation, ReduceSize
-from Transformer import Transformer
+from .util import DropPath, trunc_normal_
+from .layers import SqueezeExcitation, ReduceSize
+from .Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

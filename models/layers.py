@@ -8,7 +8,7 @@ from einops import einsum, rearrange, repeat
 from einops.layers.torch import Rearrange
 from torch import nn
 from torchsummary import summary
-from util import trunc_normal_, DropPath
+from .util import trunc_normal_, DropPath
 
 class ShiftedPatchTokenization(nn.Module):
     def __init__(self, dim: int, patch_size: int, channels=3):

@@ -221,7 +221,7 @@ class NormalizeVideo(object):
         std = torch.as_tensor(self.std, dtype=torch.float32)
         
         if clip[0].shape[0] == 1:
-            clip = [torch.stack([frame, frame, frame]) for frame in clip]
+            clip = [torch.concatenate([frame, frame, frame]) for frame in clip]
         
         
         return [F.normalize(frame, self.mean,  self.std) for frame in clip]
@@ -278,7 +278,7 @@ class RandomResizedCropVideo(transforms.RandomResizedCrop):
             w = int(round(math.sqrt(target_area * aspect_ratio)))
             h = int(round(math.sqrt(target_area / aspect_ratio)))
             
-            if 0 < w <= width and 0 < h <= height:
+            if 0 < w < width and 0 < h < height:
                 i = np.random.randint(0, height - h)
                 j = np.random.randint(0, width - w)
                 return i, j, h, w
@@ -333,10 +333,11 @@ class PILToTensorVideo(object):
     
     def __call__(self, clip):
         return [self.transforms(img) for img in clip]
-class NumpyToPIL(object):
+
+class TensorToPIL(object):
     def __call__(self, clip):
         
-        return [PIL.Image.fromarray(img.astype(np.uint8).transpose(1,2,0)) for img in clip]
+        return [PIL.Image.fromarray(img.numpy().astype(np.uint8).transpose(1,2,0)) for img in clip]
     
 class DataAugmentation:
     def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
@@ -346,7 +347,7 @@ class DataAugmentation:
         
         self.global_1 = transforms.Compose(
             [
-                NumpyToPIL(),
+                TensorToPIL(),
                 RandomResizedCropVideo(size=size, scale=global_crops_scale),
                 flip_and_jitter,
                 RandomGaussianBlurVideo(p=1.0),

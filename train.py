@@ -28,8 +28,8 @@ args = {
     "epochs": 50,
     "batch_size": 4,
     "num_frames" : 16,
-    "architecture": f"GCViViT_{weight}_weighted_DCT",
-    "save_path": f"checkpoints/GCViViT_{weight}_weighted_DCT",
+    "architecture": f"GCViViT_{weight}_weighted_RGV",
+    "save_path": f"checkpoints/GCViViT_{weight}_weighted_RGB",
     "optimizer": "AdamW",
     "patience" : 5,
     "lr" : 2e-5,
@@ -209,7 +209,7 @@ def test(model, data_loader, dataset_name):
 
 
 
-model = create_model(num_frames=args["num_frames"], in_channels=6)
+model = create_model(num_frames=args["num_frames"], in_channels=3)
 model = model.to(device)
 #model = torch.compile(model)
 
