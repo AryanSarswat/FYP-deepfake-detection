@@ -219,6 +219,11 @@ class NormalizeVideo(object):
     def __call__(self, clip):
         mean = torch.as_tensor(self.mean, dtype=torch.float32)
         std = torch.as_tensor(self.std, dtype=torch.float32)
+        
+        if clip[0].shape[0] == 1:
+            clip = [torch.stack([frame, frame, frame]) for frame in clip]
+        
+        
         return [F.normalize(frame, self.mean,  self.std) for frame in clip]
 
 class RandomGaussianBlurVideo(object):
@@ -311,36 +316,48 @@ class RandomResizedCropVideo(transforms.RandomResizedCrop):
             '(size={0}, interpolation_mode={1}, scale={2}, ratio={3})'.format(
                 self.size, self.interpolation_mode, self.scale, self.ratio
             )
-            
+
+class RandomSolarizeVideo(object):
+    def __init__(self, p=0.5, threshold=128):
+        self.p = p
+        self.threshold = threshold
+        
+    def __call__(self, clip):
+        if np.random.random() < self.p:
+            return [F.solarize(img, self.threshold) for img in clip]
+        return clip
+
 class PILToTensorVideo(object):
     def __init__(self):
         self.transforms = transforms.ToTensor()
     
     def __call__(self, clip):
         return [self.transforms(img) for img in clip]
-
+class NumpyToPIL(object):
+    def __call__(self, clip):
+        
+        return [PIL.Image.fromarray(img.astype(np.uint8).transpose(1,2,0)) for img in clip]
+    
 class DataAugmentation:
     def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
                        global_crops_scale: tuple = (0.4, 1), 
                        local_crops_scale: tuple = (0.05, 0.4), 
-                       n_local_crops: int = 8, size: int = 256):
-        
-        self.n_local_crops = n_local_crops
-        self.frame_crop_scale = frame_crop_scale
+                       n_local_crops: int = 8, size: int = 224):
         
         self.global_1 = transforms.Compose(
             [
+                NumpyToPIL(),
                 RandomResizedCropVideo(size=size, scale=global_crops_scale),
                 flip_and_jitter,
                 RandomGaussianBlurVideo(p=1.0),
-                transforms.RandomSolarize(170, p=0.2),
+                RandomSolarizeVideo(threshold=170, p=0.2),
                 PILToTensorVideo(),
                 normalize,
             ],
         )
         
     def __call__(self, img):
-        return self.global_1(img)
+        return torch.stack(self.global_1(img), dim=0)
 
 class DINOHead(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, proj_hidden_dim: int = 2048, bottleneck_dim: int = 512, n_layers:int = 3,
@@ -434,8 +451,7 @@ class DINOLoss(nn.Module):
     
 if __name__ == "__main__":
     cropper = DataAugmentation(size=224)
-    test = [PIL.Image.fromarray(np.random.rand(224,224,3).astype(np.uint8)) for _ in range(16)]
+    test = np.random.rand(3, 3, 224, 224)
     result = cropper(test)
-    for r in result:
-        print(r.shape)
+    print(result.shape)
     
