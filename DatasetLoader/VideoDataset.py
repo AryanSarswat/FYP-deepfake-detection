@@ -43,6 +43,8 @@ class VideoDataset(Dataset):
             file_path = os.path.join(path, files[idx])
             frames[idx] = self.read_file(file_path)
         
+        
+        
         return frames
     
     def read_file(self, file_path):
@@ -62,7 +64,7 @@ class VideoDataset(Dataset):
             
         if self.fft or self.dct:
             frame = np.concatenate((frame, to_concat), axis=2)
-                
+        
         frame = frame.astype(np.float32)
         frame = frame.transpose(2,0,1)
         frame = torch.from_numpy(frame)
@@ -74,6 +76,8 @@ class VideoDataset(Dataset):
     
     def __getitem__(self, idx):
         video = self.read_video(self.X[idx])
+        if self.aug:
+            video = self.aug(image=video)
         labels = torch.tensor(self.y[idx], dtype=torch.float)
         labels = torch.unsqueeze(labels, 0)
         return video, labels

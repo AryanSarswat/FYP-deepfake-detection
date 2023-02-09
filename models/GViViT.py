@@ -1,6 +1,6 @@
-from .util import DropPath, trunc_normal_
-from .layers import SqueezeExcitation, ReduceSize
-from .Transformer import Transformer
+from util import DropPath, trunc_normal_
+from layers import SqueezeExcitation, ReduceSize
+from Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -479,6 +479,7 @@ GCViT_tiny_config = {
     'layer_scale' : 1e-5,
 }
 
+
 def create_model(num_frames, in_channels):
     model = GCViViT(num_frames=num_frames, in_channels=in_channels)
     return model
@@ -490,7 +491,7 @@ def load_model(path, num_frames, in_channels):
 
 if __name__ == '__main__':
     test = torch.randn(2, 3, 3, 224, 224)
-    gcvit = GCViViT(num_frames=3)
-    summary(gcvit, (3, 3, 224, 224), device='cpu')
+    gcvit = GCViViT(num_frames=3, in_channels=3)
+    #summary(gcvit, (3, 3, 224, 224), device='cpu')
     out = gcvit(test)
     print(out.shape)

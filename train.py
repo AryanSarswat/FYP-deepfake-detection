@@ -11,6 +11,7 @@ from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+from models.util import DataAugmentation
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.GViViT import create_model
@@ -22,7 +23,7 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.4
+weight = 0.35
 args = {
     "epochs": 50,
     "batch_size": 4,
@@ -32,7 +33,7 @@ args = {
     "optimizer": "AdamW",
     "patience" : 5,
     "lr" : 2e-5,
-    "weight_decay": 1e-1,
+    "weight_decay": 0,
     "min_delta" : 1e-3,
     "dtype": 'float32',
     'patch_size' : None,
@@ -51,13 +52,7 @@ wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"
 
 print(f"Using device: {device}")
 
-train_transforms = albumentations.Compose([
-    albumentations.Normalize(),
-])
-
-test_transforms = albumentations.Compose([
-    albumentations.Normalize(),
-])
+aug = DataAugmentation(size=224)
 
 PATH = 'videos_16/data_video.csv'
 
@@ -69,8 +64,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True, dct=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], dct=True)
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'])
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
