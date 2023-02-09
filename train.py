@@ -22,17 +22,17 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.45
+weight = 0.4
 args = {
     "epochs": 50,
-    "batch_size": 8,
+    "batch_size": 4,
     "num_frames" : 16,
-    "architecture": f"GCViViT_{weight}_weighted_RGB",
-    "save_path": f"checkpoints/GCViViT_{weight}_weighted_RGB",
+    "architecture": f"GCViViT_{weight}_weighted_DCT",
+    "save_path": f"checkpoints/GCViViT_{weight}_weighted_DCT",
     "optimizer": "AdamW",
     "patience" : 5,
     "lr" : 2e-5,
-    "weight_decay": 1e-2,
+    "weight_decay": 1e-1,
     "min_delta" : 1e-3,
     "dtype": 'float32',
     'patch_size' : None,
@@ -46,7 +46,7 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss_{args['weight']}"
 
-#wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
 
 print(f"Using device: {device}")
@@ -69,8 +69,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'] ,shuffle=True, dct=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], dct=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -79,7 +79,6 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     epoch_precision = 0
     epoch_recall = 0
     epoch_f1 = 0
-    epoch_auc = 0
     idx = 0
     scaler = torch.cuda.amp.GradScaler()
     
@@ -99,7 +98,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
         # Update every other batch simulating gradient accumulation
-        if idx % 4 == 0 or idx == len(data_loader) - 1:
+        if idx % 8 == 0 or idx == len(data_loader) - 1:
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -115,21 +114,19 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
         epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
-        epoch_auc += roc_auc_score(y_cpu, y_pred_cpu, zero_division=0)
         
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-        break 
+    
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
     train_precision = epoch_precision / (idx + 1)
     train_recall = epoch_recall / (idx + 1)
     train_f1 = epoch_f1 / (idx + 1)
-    train_auc = epoch_auc / (idx + 1)
 
-    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}, Train AUC: {train_aouc:.4f}")
+    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}")
 
-    return train_loss, train_acc, train_f1, train_precision, train_recall, train_auc
+    return train_loss, train_acc, train_f1, train_precision, train_recall
 
 @torch.no_grad()
 def validate_epoch(model, data_loader, criteria, epoch):
@@ -139,7 +136,6 @@ def validate_epoch(model, data_loader, criteria, epoch):
     epoch_precision = 0
     epoch_recall = 0
     epoch_f1 = 0
-    epoch_auc = 0
     idx = 0
     with torch.no_grad():
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
@@ -165,24 +161,22 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
-            epoch_auc += roc_auc_score(y_cpu, y_pred_cpu, zero_division=0)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-            break
+
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
     val_precision = epoch_precision / (idx + 1)
     val_recall = epoch_recall / (idx + 1)
     val_f1 = epoch_f1 / (idx + 1)
-    val_auc = epoch_auc / (idx + 1)
 
-    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}, Validation AUC: {val_auc:.4f}")
+    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}")
 
-    return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc
+    return val_loss, val_acc, val_f1, val_precision, val_recall
 
 
 @torch.no_grad()
-def test(model, data_loader):
+def test(model, data_loader, dataset_name):
     model.eval()
 
     preds = []
@@ -193,49 +187,47 @@ def test(model, data_loader):
         y = y.to(device, non_blocking=True)
 
         y_pred = model(X)
-        y_pred = torch.where(y_pred > 0.5, torch.one_like(y_pred), torch.zero_like(y_pred))
+        y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
 
         y_pred_cpu = y_pred.detach().cpu().numpy()
-        y_cpu = y_detach().cpu().numpy()
+        y_cpu = y.detach().cpu().numpy()
 
         y_pred_cpu = y_pred_cpu.reshape(-1)
         y_cpu = y_cpu.reshape(-1)
 
-        pred.extend(y_pred_cpu)
+        preds.extend(y_pred_cpu)
         actual.extend(y_cpu)
 
     val_acc = accuracy_score(actual, preds)
     val_precision = precision_score(actual, preds)
     val_recall = recall_score(actual, preds)
     val_f1 = f1_score(actual, preds)
-    val_auc = auc_score(actual, preds)
+    val_auc = roc_auc_score(actual, preds)
 
     print(f"Test Acc:{val_acc:.4f} Test F1:{val_f1:.4f} Test Precision:{val_precision:.4f} Test Recall:{val_recall:.4f} Test AUC:{val_auc:.4f}")
 
-    wandb.run.summary['test_acc'] = val_acc
-    wandb.run.summary['test_precision'] = val_precision
-    wandb.run.summary['test_recall'] = val_recall
-    wandb.run.summary['test_f1'] = val_f1
-    wandb.run.summary['test_auc'] = val_auc
+    wandb.run.summary[f"{dataset_name}_test_acc"] = val_acc
+    wandb.run.summary[f'{dataset_name}_test_precision'] = val_precision
+    wandb.run.summary[f'{dataset_name}_test_recall'] = val_recall
+    wandb.run.summary[f'{dataset_name}_test_f1'] = val_f1
+    wandb.run.summary[f'{dataset_name}_test_auc'] = val_auc
 
 
 
-model = create_model(num_frames=args["num_frames"], in_channels=3)
+model = create_model(num_frames=args["num_frames"], in_channels=6)
 model = model.to(device)
 #model = torch.compile(model)
 
 num_parameters = sum(p.numel() for p in model.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-#wandb.watch(model)
+wandb.watch(model)
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
         super(weighted_binary_cross_entropy, self).__init__()
     
     def forward(self, output, target):
-        print(output.shape)
-        print(target.shape)
         loss = (args['weight'] * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
         return torch.neg(torch.mean(loss))
 
@@ -250,9 +242,8 @@ LOWEST_LOSS = np.inf
 
 try:
     for epoch in range(args['epochs']):
-        train_loss, train_acc, train_f1, train_precision, train_recall, train_auc = train_epoch(model, train_loader, optimizer, criteria, epoch)
-        val_loss, val_acc, val_f1, val_precision, val_recall, val_auc = validate_epoch(model, test_loader, criteria, epoch)
-        
+        train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch)
+        val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch)
         try:
             wandb.log({
                 "Train Loss": train_loss,
@@ -260,13 +251,11 @@ try:
                 "Train F1": train_f1,
                 "Train Precision": train_precision,
                 "Train Recall": train_recall,
-                "Train AUC": train_auc,
                 "Val Loss": val_loss,
                 "Val Acc": val_acc,
                 "Val F1": val_f1,
                 "Val Precision": val_precision,
                 "Val Recall": val_recall,
-                "Val AUC": val_auc,
             })
         except:
             print("[ERROR] Could not upload data, temporary connection")
@@ -305,15 +294,23 @@ if not SAVED_ONCE:
     torch.save(model.state_dict(), args["save_path"] + ".pt")
 
 # Inference
-TEST_DATA_PATH = './dfdc/videos_16/test_videos.csv'
 
-df = pd.read_csv(TEST_DATA_PATH)
-X = df['filename'].values
-y = df['label'].values
+DFDC_PATH = './dfdc/videos_16/test_videos.csv'
+CELEB_PATH = './celeb-df/videos_16/data_video.csv'
 
-inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=8, shuffle=False)
+def test_dataset(test_path):
+    print(f"[INFO] Testing on {test_path}")
+    df = pd.read_csv(test_path)
+    X = df['filename'].values
+    y = df['label'].values
 
-test(model, inference_data)
+    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=4, shuffle=False, dct=True)
+    
+    dataset_name = test_path.split('/')[1]
+    test(model, inference_data, dataset_name)
+
+test_dataset(DFDC_PATH)
+test_dataset(CELEB_PATH)
 
 wandb.finish()
 

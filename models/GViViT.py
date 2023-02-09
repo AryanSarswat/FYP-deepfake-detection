@@ -372,7 +372,7 @@ class GCViT(nn.Module):
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
     """
-    def __init__(self, num_frames: int, in_channels, dim: int = 768, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
+    def __init__(self, num_frames: int, in_channels, dim: int = 512, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
         """Constructor for ViViT.
 
         Args:
@@ -392,18 +392,18 @@ class GCViViT(nn.Module):
         super().__init__()
         
         self.spatial_transformer = GCViT(
-            depths=GCViT_small_config['depths'],
-            num_heads=GCViT_small_config['num_heads'],
-            window_size=GCViT_small_config['window_size'],
-            dim=GCViT_small_config['dim'],
-            mlp_ratio=GCViT_small_config['mlp_ratio'],
-            drop_path_rate=GCViT_small_config['drop_path_rate'],
-            layer_scale=GCViT_small_config['layer_scale'],
+            depths=GCViT_tiny_config['depths'],
+            num_heads=GCViT_tiny_config['num_heads'],
+            window_size=GCViT_tiny_config['window_size'],
+            dim=GCViT_tiny_config['dim'],
+            mlp_ratio=GCViT_tiny_config['mlp_ratio'],
+            drop_path_rate=GCViT_tiny_config['drop_path_rate'],
+            layer_scale=GCViT_tiny_config['layer_scale'],
             in_chan=in_channels,
         )
         
         
-        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, dim))
+        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
         self.temporal_cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
@@ -469,6 +469,15 @@ GCViT_small_config = {
     'layer_scale' : 1e-5,
 }
 
+GCViT_tiny_config = {
+    'depths' : [3, 4, 19, 5],
+    'num_heads' : [2, 4, 8, 16],
+    'window_size' : [7, 7, 14, 7],
+    'dim' : 64,
+    'mlp_ratio' : 3,
+    'drop_path_rate' : 0.2,
+    'layer_scale' : 1e-5,
+}
 
 def create_model(num_frames, in_channels):
     model = GCViViT(num_frames=num_frames, in_channels=in_channels)

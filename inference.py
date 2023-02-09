@@ -63,16 +63,16 @@ def validate(model, data_loader):
 
 if __name__ == '__main__':
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-    base_model = create_model(num_frames=16, dim=256, depth=6, heads=8, head_dims=128, dropout=0, scale_dim=4, lsa=True, in_channels=9) 
-    model = load_model(base_model, 'checkpoints/ViViT_0.4_weighted_lsa_fft.pt')
+    base_model = create_model(num_frames=16, dim=256, depth=6, heads=8, head_dims=128, dropout=0, scale_dim=4, lsa=True, in_channels=6) 
+    model = load_model(base_model, 'checkpoints/CvT_0.5_weighted_dct.pt')
     model = model.to(device)
     model.eval()
     
-    PATH = './dfdc/videos_16/test_videos.csv' 
+    PATH = './celeb-df/videos_16/data_video.csv' 
 
     df = pd.read_csv(PATH)
     print(df.head())
-    X = df['filename'].values
+    X = df['video_path'].values
     y = df['label'].values
 
     print(f"X: {X.shape}, y: {y.shape}")
@@ -81,7 +81,7 @@ if __name__ == '__main__':
         albumentations.Normalize(),
     ])
 
-    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=8, shuffle=False, fft=True)
+    train_loader = DataLoaderWrapper(X, y, transforms=test_transforms, batch_size=8, shuffle=False, dct=True)
     
     validate(model, train_loader)
     
