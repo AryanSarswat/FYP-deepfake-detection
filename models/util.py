@@ -234,6 +234,7 @@ class RandomGaussianBlurVideo(object):
     def __call__(self, clips):
         if np.random.random() < self.prob:
             return [clip.filter(PIL.ImageFilter.GaussianBlur(radius=self.kernel_size)) for clip in clips]
+        return clips
 
 flip_and_jitter = transforms.Compose(
     [
@@ -350,7 +351,7 @@ class DataAugmentation:
                 TensorToPIL(),
                 RandomResizedCropVideo(size=size, scale=global_crops_scale),
                 flip_and_jitter,
-                RandomGaussianBlurVideo(p=1.0),
+                RandomGaussianBlurVideo(p=0.2),
                 RandomSolarizeVideo(threshold=170, p=0.2),
                 PILToTensorVideo(),
                 normalize,

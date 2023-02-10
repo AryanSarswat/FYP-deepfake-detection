@@ -43,8 +43,6 @@ class VideoDataset(Dataset):
             file_path = os.path.join(path, files[idx])
             frames[idx] = self.read_file(file_path)
         
-        
-        
         return frames
     
     def read_file(self, file_path):
@@ -75,7 +73,7 @@ class VideoDataset(Dataset):
         return len(self.X)
     
     def __getitem__(self, idx):
-        video = self.read_video(self.X[idx])
+        video = self.read_file(self.X[idx])
         if self.aug:
             video = self.aug(img=video)
         labels = torch.tensor(self.y[idx], dtype=torch.float)
