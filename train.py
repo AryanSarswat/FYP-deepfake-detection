@@ -11,7 +11,7 @@ from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from models.util import DataAugmentation
+from models.util import DataAugmentationImage
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import create_model
@@ -23,24 +23,24 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.4
+weight = 0.45
 args = {
     "epochs": 50,
     "batch_size": 8,
     "num_frames" : 16,
-    "architecture": f"CvT_{weight}_weighted_RGB",
-    "save_path": f"checkpoints/CvT_{weight}_weighted_RGB",
+    "architecture": f"CvT_{weight}_weighted_fft_aug",
+    "save_path": f"checkpoints/CvT_{weight}_weighted_fft_aug",
     "optimizer": "SGD",
     "patience" : 5,
-    "lr" : 2e-5,
+    "lr" : 2e-4,
     "weight_decay": 1e-3,
     "min_delta" : 1e-3,
     "dtype": 'float32',
     'patch_size' : None,
     'dim': 256,
-    'heads' : 8,
+    'heads' : 6,
     'head_dims' : 128,
-    'depth': 8,
+    'depth': 6,
     'weight' : weight,
 }
 
@@ -50,10 +50,9 @@ args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_b
 
 wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
-
 print(f"Using device: {device}")
 
-aug = DataAugmentation(size=224)
+aug = DataAugmentationImage(size=224)
 
 PATH = 'videos_16/data_video.csv'
 
@@ -65,8 +64,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True, fft=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], fft=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -113,6 +112,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
+        break
     
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
@@ -159,6 +159,7 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
+            break
 
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
@@ -210,7 +211,7 @@ def test(model, data_loader, dataset_name):
 
 
 
-model = create_model(num_frames=args["num_frames"], in_channels=3, lsa=True, dropout=0.3, head_dims=args['head_dims'], heads=args['heads'], depth=args['heads'], dim=args['dim'])
+model = create_model(num_frames=args["num_frames"], in_channels=9, lsa=True, dropout=0.3, head_dims=args['head_dims'], heads=args['heads'], depth=args['heads'], dim=args['dim'])
 model = model.to(device)
 #model = torch.compile(model)
 
@@ -294,19 +295,19 @@ if not SAVED_ONCE:
 DFDC_PATH = './dfdc/videos_16/test_videos.csv'
 CELEB_PATH = './celeb-df/videos_16/data_video.csv'
 
-def test_dataset(test_path):
+def test_dataset(model, test_path):
     print(f"[INFO] Testing on {test_path}")
     df = pd.read_csv(test_path)
     X = df['filename'].values
     y = df['label'].values
 
-    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=4, shuffle=False)
+    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=args['batch_size'], shuffle=False, fft=True)
     
     dataset_name = test_path.split('/')[1]
     test(model, inference_data, dataset_name)
 
-test_dataset(DFDC_PATH)
-test_dataset(CELEB_PATH)
+test_dataset(model, DFDC_PATH)
+test_dataset(model, CELEB_PATH)
 
 wandb.finish()
 

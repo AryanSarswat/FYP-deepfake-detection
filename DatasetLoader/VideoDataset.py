@@ -58,7 +58,10 @@ class VideoDataset(Dataset):
             frame = cv2.imread(file_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if self.aug:
-                frame = self.aug(frame, blur, flip, grey, solarize)
+                frame = self.aug(frame, 1, 1, 1, 1)
+            else:
+                frame = frame.transpose(2,0,1)
+                frame = torch.from_numpy(frame)
             
         if self.fft:
             to_concat = img_fast_fourier_transform(frame)
@@ -69,11 +72,7 @@ class VideoDataset(Dataset):
         frame = frame / 255
             
         if self.fft or self.dct:
-            frame = np.concatenate((frame, to_concat), axis=2)
-        
-        frame = frame.astype(np.float32)
-        frame = frame.transpose(2,0,1)
-        frame = torch.from_numpy(frame)
+            frame = torch.concatenate((frame, to_concat), dim=0)
         
         return frame            
         
@@ -81,7 +80,7 @@ class VideoDataset(Dataset):
         return len(self.X)
     
     def __getitem__(self, idx):
-        video = self.read_file(self.X[idx])
+        video = self.read_video(self.X[idx])
         labels = torch.tensor(self.y[idx], dtype=torch.float)
         labels = torch.unsqueeze(labels, 0)
         return video, labels
@@ -96,6 +95,8 @@ def normalize_255(img):
     return img     
         
 def img_fast_fourier_transform(img):
+    img = img.numpy()
+    img = img.transpose(1, 2, 0)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2YCR_CB)
     img = np.fft.fftshift(np.fft.fft2(img))
     real = img.real # H X W X C
@@ -104,7 +105,11 @@ def img_fast_fourier_transform(img):
     imag = normalize_255(imag)
     real = np.log(real + 1)
     imag = np.log(imag + 1)
-    fourier = np.concatenate((real, imag), axis=2)
+    real = real.transpose(2, 0, 1)
+    imag = imag.transpose(2, 0, 1)
+    real = torch.from_numpy(real)
+    imag = torch.from_numpy(imag)
+    fourier = torch.concatenate([real, imag], dim=0)
     return fourier
     
 def img_discrete_cosine_transform(img):
