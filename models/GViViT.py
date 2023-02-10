@@ -1,6 +1,6 @@
-from util import DropPath, trunc_normal_
-from layers import SqueezeExcitation, ReduceSize
-from Transformer import Transformer
+from .util import DropPath, trunc_normal_
+from .layers import SqueezeExcitation, ReduceSize
+from .Transformer import Transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -372,7 +372,7 @@ class GCViT(nn.Module):
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
     """
-    def __init__(self, num_frames: int, in_channels, dim: int = 768, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
+    def __init__(self, num_frames: int, in_channels, dim: int = 512, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
         """Constructor for ViViT.
 
         Args:
