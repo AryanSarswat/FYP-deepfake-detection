@@ -221,7 +221,7 @@ class NormalizeVideo(object):
         std = torch.as_tensor(self.std, dtype=torch.float32)
         
         if clip[0].shape[0] == 1:
-            clip = [torch.stack([frame, frame, frame]) for frame in clip]
+            clip = [torch.concatenate([frame, frame, frame], dim=0) for frame in clip]
         
         
         return [F.normalize(frame, self.mean,  self.std) for frame in clip]
@@ -237,9 +237,9 @@ class RandomGaussianBlurVideo(object):
 
 flip_and_jitter = transforms.Compose(
     [
-        RandomHorizontalFlipVideo(p=0.5),
+        RandomHorizontalFlipVideo(p=1),
         RandomColorJitterVideo(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-        RandomGrayScaleVideo(p=0.2),
+        RandomGrayScaleVideo(p=1),
     ]
 )
 
@@ -278,7 +278,7 @@ class RandomResizedCropVideo(transforms.RandomResizedCrop):
             w = int(round(math.sqrt(target_area * aspect_ratio)))
             h = int(round(math.sqrt(target_area / aspect_ratio)))
             
-            if 0 < w <= width and 0 < h <= height:
+            if 0 < w < width and 0 < h < height:
                 i = np.random.randint(0, height - h)
                 j = np.random.randint(0, width - w)
                 return i, j, h, w
@@ -358,6 +358,46 @@ class DataAugmentation:
         
     def __call__(self, img):
         return torch.stack(self.global_1(img), dim=0)
+
+class DataAugmentationImage:
+    def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
+                       global_crops_scale: tuple = (0.4, 1), 
+                       local_crops_scale: tuple = (0.05, 0.4), 
+                       n_local_crops: int = 8, size: int = 224):
+        
+        self.gaussian_blur = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))
+        
+        
+        self.horizontal_flip = transforms.RandomHorizontalFlip(p=1)
+        self.color_jitter = transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2)
+        self.grey_scale = transforms.RandomGrayscale(p=1)
+
+        self.normalize = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+            ]
+        )
+        
+        self.solarize = transforms.RandomSolarize(170, p=1)
+        
+    def get_transforms(self):
+        blur = 1 if np.random.random() < 0.1 else 0
+        flip = 1 if np.random.random() < 0.5 else 0
+        grey = 1 if np.random.random() < 0.2 else 0
+        solarize = 1 if np.random.random() < 0.2 else 0
+        return blur, flip, grey, solarize
+    
+    def __call__(self, img, blur, flip, grey, solarize):
+        img = self.gaussian_blur(img) if blur == 1  else img
+        img = self.horizontal_flip(img) if flip == 1 else img
+        img = self.color_jitter(img)
+        img = self.grey_scale(img) if grey == 1 else img
+        img = self.solarize(img) if solarize == 1 else img
+        img = self.normalize(img)
+        
+        return img
+
 
 class DINOHead(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, proj_hidden_dim: int = 2048, bottleneck_dim: int = 512, n_layers:int = 3,
@@ -451,7 +491,7 @@ class DINOLoss(nn.Module):
     
 if __name__ == "__main__":
     cropper = DataAugmentation(size=224)
-    test = np.random.rand(3, 3, 224, 224)
+    test = np.random.rand(16, 3, 224, 224)
     result = cropper(test)
     print(result.shape)
     

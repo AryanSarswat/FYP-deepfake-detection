@@ -39,20 +39,28 @@ class VideoDataset(Dataset):
             
         frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
+        if self.aug:
+            blur, flip, grey, solarize =  self.aug.get_transforms()
+        
         for idx in prange(len(files)):
             file_path = os.path.join(path, files[idx])
-            frames[idx] = self.read_file(file_path)
+            if self.aug:
+                frames[idx] = self.read_file(file_path, blur=blur, flip=flip, grey=grey, solarize=solarize)
+            else:
+                frames[idx] = self.read_file(file_path)
         
         
         
         return frames
     
-    def read_file(self, file_path):
+    def read_file(self, file_path, blur=0, flip=0, grey=0, solarize=0):
         if self.pickle:
             frame = np.load(os.path.join(file_path))
         else:
             frame = cv2.imread(file_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            if self.aug:
+                frame = self.aug(frame, blur, flip, grey, solarize)
             
         if self.fft:
             to_concat = img_fast_fourier_transform(frame)
@@ -76,8 +84,6 @@ class VideoDataset(Dataset):
     
     def __getitem__(self, idx):
         video = self.read_video(self.X[idx])
-        if self.aug:
-            video = self.aug(image=video)
         labels = torch.tensor(self.y[idx], dtype=torch.float)
         labels = torch.unsqueeze(labels, 0)
         return video, labels
