@@ -338,27 +338,6 @@ class TensorToPIL(object):
         
         return [PIL.Image.fromarray(img.numpy().astype(np.uint8).transpose(1,2,0)) for img in clip]
     
-class DataAugmentation:
-    def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
-                       global_crops_scale: tuple = (0.4, 1), 
-                       local_crops_scale: tuple = (0.05, 0.4), 
-                       n_local_crops: int = 8, size: int = 224):
-        
-        self.global_1 = transforms.Compose(
-            [
-                TensorToPIL(),
-                RandomResizedCropVideo(size=size, scale=global_crops_scale),
-                flip_and_jitter,
-                RandomGaussianBlurVideo(p=1.0),
-                RandomSolarizeVideo(threshold=170, p=0.2),
-                PILToTensorVideo(),
-                normalize,
-            ],
-        )
-        
-    def __call__(self, img):
-        return torch.stack(self.global_1(img), dim=0)
-
 class DataAugmentationImage:
     def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
                        global_crops_scale: tuple = (0.4, 1), 
