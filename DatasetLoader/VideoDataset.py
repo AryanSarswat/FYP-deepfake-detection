@@ -8,6 +8,7 @@ from numba import prange
 from scipy.fftpack import dct
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
+from torchvision import transforms
 from tqdm import tqdm
 
 
@@ -48,8 +49,6 @@ class VideoDataset(Dataset):
             else:
                 frames[idx] = self.read_file(file_path)
         
-        
-        
         return frames
     
     def read_file(self, file_path, blur=0, flip=0, grey=0, solarize=0):
@@ -61,16 +60,14 @@ class VideoDataset(Dataset):
             
             if self.aug:
                 frame = self.aug(frame, blur, flip, grey, solarize)
-            
-        if self.fft:
-            to_concat = img_fast_fourier_transform(frame)
-        elif self.dct:
-            to_concat = img_discrete_cosine_transform(frame)
-
-        # Normalize to 0-1
-        frame = frame / 255
+                frame = frame.numpy()
             
         if self.fft or self.dct:
+            if self.fft:
+                to_concat = img_fast_fourier_transform(frame)
+            elif self.dct:
+                to_concat = img_discrete_cosine_transform(frame)
+                
             frame = np.concatenate((frame, to_concat), axis=2)
         
         frame = frame.astype(np.float32)
