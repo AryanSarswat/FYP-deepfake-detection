@@ -293,7 +293,7 @@ if not SAVED_ONCE:
 DFDC_PATH = './dfdc/videos_16/test_videos.csv'
 CELEB_PATH = './celeb-df/videos_16/data_video.csv'
 
-def test_dataset(test_path):
+def test_dataset(model, test_path):
     print(f"[INFO] Testing on {test_path}")
     df = pd.read_csv(test_path)
     X = df['filename'].values
@@ -304,8 +304,8 @@ def test_dataset(test_path):
     dataset_name = test_path.split('/')[1]
     test(model, inference_data, dataset_name)
 
-test_dataset(DFDC_PATH)
-test_dataset(CELEB_PATH)
+test_dataset(model, DFDC_PATH)
+test_dataset(model, CELEB_PATH)
 
 wandb.finish()
 
