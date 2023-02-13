@@ -11,10 +11,10 @@ from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from models.util import DataAugmentation
+from models.util import DataAugmentationImage
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.GViViT import create_model
+from models.CvT import create_model
 from contextlib import nullcontext
 
 # Optimisations
@@ -23,23 +23,24 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.35
+weight = 0.45
 args = {
     "epochs": 50,
-    "batch_size": 4,
+    "batch_size": 8,
     "num_frames" : 16,
-    "architecture": f"GCViViT_{weight}_weighted_RGV",
-    "save_path": f"checkpoints/GCViViT_{weight}_weighted_RGB",
-    "optimizer": "AdamW",
+    "architecture": f"CvT_{weight}_weighted_fft_aug",
+    "save_path": f"checkpoints/CvT_{weight}_weighted_fft_aug",
+    "optimizer": "SGD",
     "patience" : 5,
-    "lr" : 2e-5,
-    "weight_decay": 0,
+    "lr" : 2e-4,
+    "weight_decay": 1e-3,
     "min_delta" : 1e-3,
     "dtype": 'float32',
     'patch_size' : None,
-    'dim': 'base',
-    'head_dims' : 'base',
-    'depth': 'base',
+    'dim': 256,
+    'heads' : 6,
+    'head_dims' : 128,
+    'depth': 6,
     'weight' : weight,
 }
 
@@ -49,10 +50,9 @@ args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_b
 
 wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
 
-
 print(f"Using device: {device}")
 
-aug = DataAugmentation(size=224)
+aug = DataAugmentationImage(size=224)
 
 PATH = 'videos_16/data_video.csv'
 
@@ -64,8 +64,8 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
 print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'])
+train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True, fft=True)
+test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], fft=True)
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch):
     model.train()
@@ -93,7 +93,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
         
         # Update every other batch simulating gradient accumulation
-        if idx % 8 == 0 or idx == len(data_loader) - 1:
+        if idx % 4 == 0 or idx == len(data_loader) - 1:
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -209,7 +209,7 @@ def test(model, data_loader, dataset_name):
 
 
 
-model = create_model(num_frames=args["num_frames"], in_channels=3)
+model = create_model(num_frames=args["num_frames"], in_channels=9, lsa=True, dropout=0.3, head_dims=args['head_dims'], heads=args['heads'], depth=args['heads'], dim=args['dim'])
 model = model.to(device)
 #model = torch.compile(model)
 
@@ -227,7 +227,7 @@ class weighted_binary_cross_entropy(nn.Module):
         return torch.neg(torch.mean(loss))
 
 criteria = weighted_binary_cross_entropy()
-optimizer = torch.optim.AdamW(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'])
+optimizer = torch.optim.SGD(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'], momentum=0.7)
 
 previous_loss = np.inf
 patience = 0
@@ -299,7 +299,7 @@ def test_dataset(model, test_path):
     X = df['filename'].values
     y = df['label'].values
 
-    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=4, shuffle=False, dct=True)
+    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=args['batch_size'], shuffle=False, fft=True)
     
     dataset_name = test_path.split('/')[1]
     test(model, inference_data, dataset_name)

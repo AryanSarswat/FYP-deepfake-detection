@@ -475,7 +475,7 @@ GCViT_tiny_config = {
     'window_size' : [7, 7, 14, 7],
     'dim' : 64,
     'mlp_ratio' : 3,
-    'drop_path_rate' : 0.2,
+    'drop_path_rate' : 0.3,
     'layer_scale' : 1e-5,
 }
 
