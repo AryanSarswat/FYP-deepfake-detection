@@ -8,10 +8,10 @@ from sklearn.metrics import (accuracy_score, f1_score, precision_score,
                              recall_score, roc_auc_score)
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
-from models.util import DataAugmentationImage
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import create_model
+from models.util import DataAugmentationImage
 
 # Optimisations
 torch.backends.cudnn.benchmark = True

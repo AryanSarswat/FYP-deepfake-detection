@@ -1,11 +1,11 @@
-from .util import DropPath, trunc_normal_
-from .layers import SqueezeExcitation, ReduceSize
-from .Transformer import Transformer
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from einops import rearrange, repeat
-from torchsummary import summary
+
+from .layers import ReduceSize, SqueezeExcitation
+from .Transformer import Transformer
+from .util import DropPath, trunc_normal_
+
 
 def window_partition(x, window_size):
     """

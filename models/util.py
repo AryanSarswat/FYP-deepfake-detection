@@ -1,15 +1,14 @@
 import math
-import typing
 
+import cv2
 import numpy as np
+import PIL
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision import transforms
 import torchvision.transforms.functional as F
-import pytorchvideo.transforms as VT
-import cv2
-import PIL
+from torchvision import transforms
+
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     def norm_cdf(x):

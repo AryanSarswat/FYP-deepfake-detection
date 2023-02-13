@@ -1,13 +1,9 @@
-from math import ceil
-
 import torch
-import torch.nn.functional as F
-from .EfficientNetV2 import create_efficientnetv2_backbone
-from einops import einsum, rearrange, repeat
-from einops.layers.torch import Rearrange
-from .layers import TransformerBlock
+from einops import rearrange, repeat
 from torch import nn
 from torchsummary import summary
+
+from .EfficientNetV2 import create_efficientnetv2_backbone
 from .Transformer import Transformer
 
 

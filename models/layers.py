@@ -1,14 +1,12 @@
-import typing
 from collections import OrderedDict
 from functools import partial
 
 import torch
 import torch.nn.functional as F
-from einops import einsum, rearrange, repeat
+from einops import einsum, rearrange
 from einops.layers.torch import Rearrange
 from torch import nn
-from torchsummary import summary
-from .util import trunc_normal_, DropPath
+
 
 class ShiftedPatchTokenization(nn.Module):
     def __init__(self, dim: int, patch_size: int, channels=3):

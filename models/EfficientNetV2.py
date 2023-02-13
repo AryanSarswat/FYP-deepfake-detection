@@ -3,9 +3,8 @@ from collections import OrderedDict
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from .layers import ConvBNAct, MBConv, StochasticDepth
-from torchsummary import summary
+
+from .layers import ConvBNAct, MBConv
 
 
 class EfficientNetV2(nn.Module):
