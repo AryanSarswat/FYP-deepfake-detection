@@ -435,8 +435,10 @@ class GCViViT(nn.Module):
         x = x[:, 0]
         x = self.dropout(x)
         
+        vectors = x
+        
         x = self.head(x)
-        return x    
+        return x, vectors
         
 
 GCViT_large_config = {

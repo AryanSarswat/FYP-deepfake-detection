@@ -94,6 +94,38 @@ class weighted_binary_cross_entropy(nn.Module):
         loss = self.loss(output, target)
         return torch.neg(torch.mean(loss))
 
+class SCLoss(nn.Module):
+    def __init__(self, device, dim, weight=None) -> None:
+        super().__init__()
+        if weight is not None:
+            self.softmax = lambda output, target: (weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))
+        else:
+            self.softmax = nn.BCELoss()
+        self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
+        self.euc_dist = lambda x, y: torch.sqrt(torch.sum((x - y) ** 2, dim=1))
+        self.dim = dim
+        self.lamb = 0.5
+        self.m = 0.3
+    
+    def forward(self, output, target, vectors):
+        loss = self.softmax(output, target)
+        loss = torch.neg(torch.mean(loss))
+        
+        real_indexes = torch.where(target == 0)[0]
+        fake_indexes = torch.where(target == 1)[0]
+        
+        real_vectors = vectors[real_indexes]
+        fake_vectors = vectors[fake_indexes]
+        
+        # Calculate Center Loss
+        
+        m_real = torch.mean(real_vectors - self.real_center, dim=0)
+        m_fake = torch.mean(fake_vectors - self.real_center, dim=0)
+        L = m_real - m_fake + self.m * np.sqrt(self.dim)
+        center_loss = m_real + max(L, 0)
+        
+        return loss + self.lamb * center_loss
+
 def get_dataset(path, training=False):
     df = pd.read_csv(path)
     X = df['video_path'].values
@@ -128,8 +160,8 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device):
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
         
-        y_pred = model(X)
-        loss = criteria(y_pred, y)
+        y_pred, vectors = model(X)
+        loss = criteria(y_pred, y, vectors)
             
             
         epoch_loss += loss.item()
@@ -361,7 +393,7 @@ wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs
 wandb.watch(MODEL)
 
 # Initialise loss function
-CRITERIA = weighted_binary_cross_entropy(weight=WEIGHT)
+CRITERIA = SCLoss(DEVICE, DIM)
 
 # Train model
 MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE)

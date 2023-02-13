@@ -70,7 +70,9 @@ class ConvolutionalVisionTransformer(nn.Module):
         # Take only the cls_temporal_token
         x = x[:,0]
         
-        return self.classifier(x)
+        vectors = x
+        
+        return self.classifier(x), vectors
         
 def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4, lsa=False, in_channels=3):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
