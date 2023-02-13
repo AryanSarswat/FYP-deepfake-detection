@@ -49,6 +49,8 @@ class VideoDataset(Dataset):
             else:
                 frames[idx] = self.read_file(file_path)
         
+        
+        
         return frames
     
     def read_file(self, file_path, blur=0, flip=0, grey=0, solarize=0):
@@ -57,11 +59,9 @@ class VideoDataset(Dataset):
         else:
             frame = cv2.imread(file_path)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
             if self.aug:
-                frame = self.aug(frame, 1, 1, 1, 1)
-            else:
-                frame = frame.transpose(2,0,1)
-                frame = torch.from_numpy(frame)
+                frame = self.aug(frame, blur, flip, grey, solarize)
             
         if self.fft:
             to_concat = img_fast_fourier_transform(frame)
@@ -72,7 +72,11 @@ class VideoDataset(Dataset):
         frame = frame / 255
             
         if self.fft or self.dct:
-            frame = torch.concatenate((frame, to_concat), dim=0)
+            frame = np.concatenate((frame, to_concat), axis=2)
+        
+        frame = frame.astype(np.float32)
+        frame = frame.transpose(2,0,1)
+        frame = torch.from_numpy(frame)
         
         return frame            
         
@@ -95,8 +99,6 @@ def normalize_255(img):
     return img     
         
 def img_fast_fourier_transform(img):
-    img = img.numpy()
-    img = img.transpose(1, 2, 0)
     img = cv2.cvtColor(img, cv2.COLOR_RGB2YCR_CB)
     img = np.fft.fftshift(np.fft.fft2(img))
     real = img.real # H X W X C
@@ -105,11 +107,7 @@ def img_fast_fourier_transform(img):
     imag = normalize_255(imag)
     real = np.log(real + 1)
     imag = np.log(imag + 1)
-    real = real.transpose(2, 0, 1)
-    imag = imag.transpose(2, 0, 1)
-    real = torch.from_numpy(real)
-    imag = torch.from_numpy(imag)
-    fourier = torch.concatenate([real, imag], dim=0)
+    fourier = np.concatenate((real, imag), axis=2)
     return fourier
     
 def img_discrete_cosine_transform(img):

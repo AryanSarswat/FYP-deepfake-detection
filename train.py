@@ -1,6 +1,3 @@
-import typing
-
-import albumentations
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +12,6 @@ from models.util import DataAugmentationImage
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import create_model
-from contextlib import nullcontext
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -23,51 +19,100 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-weight = 0.45
-args = {
-    "epochs": 50,
-    "batch_size": 8,
-    "num_frames" : 16,
-    "architecture": f"CvT_{weight}_weighted_fft_aug",
-    "save_path": f"checkpoints/CvT_{weight}_weighted_fft_aug",
-    "optimizer": "SGD",
-    "patience" : 5,
-    "lr" : 2e-4,
-    "weight_decay": 1e-3,
-    "min_delta" : 1e-3,
-    "dtype": 'float32',
-    'patch_size' : None,
-    'dim': 256,
-    'heads' : 6,
-    'head_dims' : 128,
-    'depth': 6,
-    'weight' : weight,
-}
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#! Hyper parameters
 
-args["experiment_name"] = f"{args['architecture']}_frames_{args['num_frames']}_batch_{args['batch_size']}_lr_{args['lr']}_weighted_loss_{args['weight']}"
+# Dataset
+PATH_KODF = 'videos_16/data_video.csv'
+PATH_FACEFORENSICS = None
+PATH_DFDC = './dfdc/videos_16/test_videos.csv'
+PATH_CELEB_DF = './celeb-df/videos_16/data_video.csv'
+IMAGE_SIZE = 224
+NUM_FRAMES = 16
+AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-wandb.init(project="deepfake-baseline", config=args, name=args["experiment_name"])
+RGB = False
+FFT = True
+DCT = False
+IN_CHANNELS = 3 # Default
 
-print(f"Using device: {device}")
+assert not (RGB ^ FFT ^ DCT), "Only one of RGB, FFT or DCT can be True"
 
-aug = DataAugmentationImage(size=224)
+if FFT:
+    IN_CHANNELS = 9
+elif DCT:
+    IN_CHANNELS = 3
 
-PATH = 'videos_16/data_video.csv'
+# Model
+MODEL_NAME = 'CvT'
+DEPTH = 6
+DIM = 256
+HEADS = 6
+HEAD_DIM = 128
+PATCH_SIZE = None
+LSA = True
+DROPOUT = 0.3
 
-df = pd.read_csv(PATH)
-X = df['video_path'].values
-y = df['label'].values
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+# Training 
+WEIGHT = 0.45
+BATCH_SIZE = 8
+LR = 2e-4
+WEIGHT_DECAY = 1e-3
+MOMENTUM = 0.7
+PATIENCE = 5
+MIN_DELTA = 1e-3
+NUM_EPOCHS = 50
+DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {DEVICE}")
 
-print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
+# Create Save path and Model name
+MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}_weighted"
 
-train_loader = DataLoaderWrapper(X_train, y_train, num_frames=16, height=224, width=224, transforms=aug, batch_size=args['batch_size'] ,shuffle=True, fft=True)
-test_loader = DataLoaderWrapper(X_test, y_test, num_frames=16, height=224, width=224, transforms=None, batch_size=args['batch_size'], fft=True)
+if FFT:
+    MODEL_NAME += "_fft"
+elif DCT:
+    MODEL_NAME += "_dct"
+else:
+    MODEL_NAME += "_rgb"
+    
+if LSA:
+    MODEL_NAME += "_lsa"
 
-def train_epoch(model, data_loader, optimizer, criteria, epoch):
+if AUGMENTATIONS != None:
+    MODEL_NAME += "_aug"
+
+SAVE_PATH = f"checkpoints/{MODEL_NAME}"
+
+class weighted_binary_cross_entropy(nn.Module):
+    def __init__(self, weight=None):
+        super(weighted_binary_cross_entropy, self).__init__()
+        if weight is not None:
+            self.loss = lambda output, target: (weight * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
+    
+    def forward(self, output, target):
+        loss = self.loss(output, target)
+        return torch.neg(torch.mean(loss))
+
+def get_dataset(path, training=False):
+    df = pd.read_csv(path)
+    X = df['video_path'].values
+    y = df['label'].values
+    
+    if training:
+        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+
+        print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
+
+        train_loader = DataLoaderWrapper(X_train, y_train, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=AUGMENTATIONS, batch_size=BATCH_SIZE, shuffle=True, fft=FFT, dct=DCT)
+        test_loader = DataLoaderWrapper(X_test, y_test, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=None, batch_size=BATCH_SIZE, fft=FFT, dct=DCT)
+        
+        return train_loader, test_loader
+    else:
+        inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=BATCH_SIZE, shuffle=False, fft=FFT, dct=DCT)
+        return inference_data
+
+def train_epoch(model, data_loader, optimizer, criteria, epoch, device):
     model.train()
     epoch_loss = 0
     epoch_acc = 0
@@ -124,7 +169,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
     return train_loss, train_acc, train_f1, train_precision, train_recall
 
 @torch.no_grad()
-def validate_epoch(model, data_loader, criteria, epoch):
+def validate_epoch(model, data_loader, criteria, epoch, device):
     model.eval()
     epoch_loss = 0
     epoch_acc = 0
@@ -169,13 +214,81 @@ def validate_epoch(model, data_loader, criteria, epoch):
 
     return val_loss, val_acc, val_f1, val_precision, val_recall
 
+def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, patience, min_delta, save_path, device):
+    previous_loss = np.inf
+    patience_counter = 0
+
+    saved_once = False
+    lowest_loss = np.inf
+    
+    try:
+        for epoch in range(epochs):
+            train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch, device)
+            val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch, device)
+            try:
+                wandb.log({
+                    "Train Loss": train_loss,
+                    "Train Acc": train_acc,
+                    "Train F1": train_f1,
+                    "Train Precision": train_precision,
+                    "Train Recall": train_recall,
+                    "Val Loss": val_loss,
+                    "Val Acc": val_acc,
+                    "Val F1": val_f1,
+                    "Val Precision": val_precision,
+                    "Val Recall": val_recall,
+                })
+            except Exception as e:
+                print("[ERROR] Could not upload data, temporary connection loss or something else")
+                print(e)
+            
+            delta = val_loss - previous_loss
+            
+            if val_loss < lowest_loss:
+                torch.save(model.state_dict(), save_path + ".pt")
+                lowest_loss = val_loss
+                saved_once = True
+
+            if abs(delta) < min_delta or val_loss > lowest_loss:
+                patience_counter += 1
+                if val_loss < previous_loss:
+                    print(f"[INFO] Validation Loss improved by {delta:.2e}")
+                else:
+                    print(f"[INFO] Validation Loss worsened by {delta:.2e}")
+            else:
+                patience_counter = 0
+            
+            if patience_counter >= patience:
+                print("[INFO] No improvement in Validation loss Early Stopping")
+                break
+            
+            previous_loss = val_loss
+            print(f"[INFO] Number of times loss has not improved : {patience_counter}")
+    except KeyboardInterrupt:
+        print("[ERROR] Training Interrupted")
+        print("[INFO] Saving Model as Interrupted")
+        torch.save(model.state_dict(), save_path + "_interrupted.pt")
+        
+    print("[INFO] Training Complete")
+
+    if not saved_once:
+        print("[INFO] Saving Model")
+        torch.save(model.state_dict(), save_path + ".pt")
+        
+    return model
 
 @torch.no_grad()
-def test(model, data_loader, dataset_name):
+def inference(model, data_loader, dataset_name, device):
     model.eval()
 
     preds = []
     actual = []
+    
+    val_acc = 0
+    val_precision = 0
+    val_recall = 0
+    val_f1 = 0
+    val_auc = 0
 
     for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
         X = X.to(device, non_blocking=True)
@@ -207,105 +320,57 @@ def test(model, data_loader, dataset_name):
     wandb.run.summary[f'{dataset_name}_test_f1'] = val_f1
     wandb.run.summary[f'{dataset_name}_test_auc'] = val_auc
 
+# Initialise datasets
+train_loader, test_loader = get_dataset(PATH_DFDC, training=True)
 
+dfdc_loader = get_dataset(PATH_DFDC, training=False)
+celeb_df_loader = get_dataset(PATH_CELEB_DF, training=False)
+# faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
-model = create_model(num_frames=args["num_frames"], in_channels=9, lsa=True, dropout=0.3, head_dims=args['head_dims'], heads=args['heads'], depth=args['heads'], dim=args['dim'])
-model = model.to(device)
-#model = torch.compile(model)
-
-num_parameters = sum(p.numel() for p in model.parameters())
+# Initialise model
+MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, lsa=LSA, dropout=DROPOUT, head_dims=HEAD_DIM, heads=HEADS, depth=DEPTH, dim=DIM)
+MODEL = MODEL.to(DEVICE)
+num_parameters = sum(p.numel() for p in MODEL.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-wandb.watch(model)
+OPTIMIZER = torch.optim.SGD(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY, momentum=MOMENTUM)
 
-class weighted_binary_cross_entropy(nn.Module):
-    def __init__(self, weight=None):
-        super(weighted_binary_cross_entropy, self).__init__()
-    
-    def forward(self, output, target):
-        loss = (args['weight'] * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
-        return torch.neg(torch.mean(loss))
+# Initialise wandb
+wandb_configs = {
+    "epochs": NUM_EPOCHS,
+    "batch_size": BATCH_SIZE,
+    "num_frames" : NUM_FRAMES,
+    "architecture": MODEL_NAME,
+    "save_path": SAVE_PATH,
+    "optimizer": str(OPTIMIZER),
+    "patience" : PATIENCE,
+    "lr" : LR,
+    "weight_decay": WEIGHT_DECAY,
+    "min_delta" : MIN_DELTA,
+    'patch_size' : PATCH_SIZE,
+    'dim': DIM,
+    'heads' : HEADS,
+    'head_dims' : HEAD_DIM,
+    'depth': DEPTH,
+    'weight' : WEIGHT,
+}
 
-criteria = weighted_binary_cross_entropy()
-optimizer = torch.optim.SGD(model.parameters(), lr=args['lr'], weight_decay=args['weight_decay'], momentum=0.7)
+wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}"
 
-previous_loss = np.inf
-patience = 0
+wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
+wandb.watch(MODEL)
 
-SAVED_ONCE = False
-LOWEST_LOSS = np.inf
+# Initialise loss function
+CRITERIA = weighted_binary_cross_entropy(weight=WEIGHT)
 
-try:
-    for epoch in range(args['epochs']):
-        train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch)
-        val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch)
-        try:
-            wandb.log({
-                "Train Loss": train_loss,
-                "Train Acc": train_acc,
-                "Train F1": train_f1,
-                "Train Precision": train_precision,
-                "Train Recall": train_recall,
-                "Val Loss": val_loss,
-                "Val Acc": val_acc,
-                "Val F1": val_f1,
-                "Val Precision": val_precision,
-                "Val Recall": val_recall,
-            })
-        except:
-            print("[ERROR] Could not upload data, temporary connection")
-        
-        delta = val_loss - previous_loss
-        
-        if val_loss < LOWEST_LOSS:
-            torch.save(model.state_dict(), args["save_path"] + ".pt")
-            LOWEST_LOSS = val_loss
-            SAVED_ONCE = True
-
-        if abs(delta) < args['min_delta'] or val_loss > LOWEST_LOSS:
-            patience += 1
-            if val_loss < previous_loss:
-                print(f"[INFO] Validation Loss improved by {delta:.2e}")
-            else:
-                print(f"[INFO] Validation Loss worsened by {delta:.2e}")
-        else:
-            patience = 0
-        
-        if patience >= args["patience"]:
-            print("[INFO] No improvement in Validation loss Early Stopping")
-            break
-        
-        previous_loss = val_loss
-        print(f"[INFO] Number of times loss has not improved : {patience}")
-except KeyboardInterrupt:
-    print("[ERROR] Training Interrupted")
-    print("[INFO] Saving Model")
-    torch.save(model.state_dict(), args["save_path"] + "_interrupted.pt")
-    
-print("[INFO] Training Complete")
-
-if not SAVED_ONCE:
-    print("[INFO] Saving Model")
-    torch.save(model.state_dict(), args["save_path"] + ".pt")
+# Train model
+MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE)
 
 # Inference
+inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE)
+inference(model=MODEL, data_loader=celeb_df_loader, dataset_name="Celeb_DF", device=DEVICE)
+#inference(model=MODEL, data_loader=faceforenics_loader, dataset_name="FaceForenics++", device=DEVICE)
 
-DFDC_PATH = './dfdc/videos_16/test_videos.csv'
-CELEB_PATH = './celeb-df/videos_16/data_video.csv'
-
-def test_dataset(model, test_path):
-    print(f"[INFO] Testing on {test_path}")
-    df = pd.read_csv(test_path)
-    X = df['filename'].values
-    y = df['label'].values
-
-    inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=args['batch_size'], shuffle=False, fft=True)
-    
-    dataset_name = test_path.split('/')[1]
-    test(model, inference_data, dataset_name)
-
-test_dataset(model, DFDC_PATH)
-test_dataset(model, CELEB_PATH)
-
+# Finish wandb
 wandb.finish()
 

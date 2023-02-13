@@ -221,7 +221,7 @@ class NormalizeVideo(object):
         std = torch.as_tensor(self.std, dtype=torch.float32)
         
         if clip[0].shape[0] == 1:
-            clip = [torch.concatenate([frame, frame, frame], dim=0) for frame in clip]
+            clip = [torch.concatenate([frame, frame, frame]) for frame in clip]
         
         
         return [F.normalize(frame, self.mean,  self.std) for frame in clip]
@@ -234,7 +234,6 @@ class RandomGaussianBlurVideo(object):
     def __call__(self, clips):
         if np.random.random() < self.prob:
             return [clip.filter(PIL.ImageFilter.GaussianBlur(radius=self.kernel_size)) for clip in clips]
-        return clips
 
 flip_and_jitter = transforms.Compose(
     [
@@ -336,9 +335,9 @@ class PILToTensorVideo(object):
         return [self.transforms(img) for img in clip]
 
 class TensorToPIL(object):
-    def __call__(self, img):
+    def __call__(self, clip):
         
-        return PIL.Image.fromarray(img.astype(np.uint8)) 
+        return [PIL.Image.fromarray(img.numpy().astype(np.uint8).transpose(1,2,0)) for img in clip]
     
 class DataAugmentation:
     def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
@@ -351,7 +350,7 @@ class DataAugmentation:
                 TensorToPIL(),
                 RandomResizedCropVideo(size=size, scale=global_crops_scale),
                 flip_and_jitter,
-                RandomGaussianBlurVideo(p=0.2),
+                RandomGaussianBlurVideo(p=1.0),
                 RandomSolarizeVideo(threshold=170, p=0.2),
                 PILToTensorVideo(),
                 normalize,
@@ -381,9 +380,7 @@ class DataAugmentationImage:
             ]
         )
         
-        self.solarize = transforms.RandomSolarize(170, p=1),
-
-        self.T2PIL = TensorToPIL()
+        self.solarize = transforms.RandomSolarize(170, p=1)
         
     def get_transforms(self):
         blur = 1 if np.random.random() < 0.1 else 0
@@ -393,12 +390,11 @@ class DataAugmentationImage:
         return blur, flip, grey, solarize
     
     def __call__(self, img, blur, flip, grey, solarize):
-        img = self.T2PIL(img)
         img = self.gaussian_blur(img) if blur == 1  else img
         img = self.horizontal_flip(img) if flip == 1 else img
         img = self.color_jitter(img)
         img = self.grey_scale(img) if grey == 1 else img
-        img = self.solarize[0](img) if solarize == 1 else img
+        img = self.solarize(img) if solarize == 1 else img
         img = self.normalize(img)
         
         return img
