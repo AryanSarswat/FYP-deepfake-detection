@@ -47,10 +47,13 @@ class ViViT(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         
-        self.head = nn.Sequential(
+        self.mlp = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, dim),
-            nn.ReLU(),
+            nn.ReLU()    
+        )
+               
+        self.head = nn.Sequential(
             nn.Linear(dim, 1),
             nn.Sigmoid()
         )
@@ -87,7 +90,9 @@ class ViViT(nn.Module):
         
         x = x[:,0]
         
-        return self.head(x)
+        x = self.mlp(x)
+        
+        return self.head(x), x
     
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):

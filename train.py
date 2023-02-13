@@ -63,6 +63,7 @@ MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
 NUM_EPOCHS = 50
+LOG_WANDB = True
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
@@ -389,8 +390,9 @@ wandb_configs = {
 
 wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}"
 
-wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
-wandb.watch(MODEL)
+if LOG_WANDB:
+    wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
+    wandb.watch(MODEL)
 
 # Initialise loss function
 CRITERIA = SCLoss(DEVICE, DIM)

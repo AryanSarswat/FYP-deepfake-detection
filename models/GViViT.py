@@ -487,7 +487,7 @@ def create_model(num_frames, in_channels):
     return model
 
 def load_model(path, num_frames, in_channels):
-    model = create_model()
+    model = create_model(num_frames, in_channels)
     model.load_state_dict(torch.load(path))
     return model
 
