@@ -112,7 +112,6 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch):
         
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-        break
     
     train_loss = epoch_loss / (idx + 1)
     train_acc = epoch_acc / (idx + 1)
@@ -159,7 +158,6 @@ def validate_epoch(model, data_loader, criteria, epoch):
             epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-            break
 
     val_loss = epoch_loss / (idx + 1)
     val_acc = epoch_acc / (idx + 1)
