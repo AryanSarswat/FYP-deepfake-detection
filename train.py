@@ -11,7 +11,11 @@ from tqdm import tqdm
 
 from DatasetLoader.VideoDataset import DataLoaderWrapper
 from models.CvT import create_model
-from models.util import DataAugmentationImage
+from models.losses import *
+from models.util import DataAugmentationImage, fix_random_seed
+
+# Fix seed for reproducibility
+fix_random_seed(seed=11)
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -19,9 +23,7 @@ torch.backends.cudnn.enabled = True
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
-
 #! Hyper parameters
-
 # Debugging
 torch.autograd.set_detect_anomaly(True)
 
@@ -56,7 +58,6 @@ PATCH_SIZE = None
 LSA = True
 DROPOUT = 0.3
 
-
 # Training 
 WEIGHT = 0.45
 BATCH_SIZE = 8
@@ -88,55 +89,6 @@ if AUGMENTATIONS != None:
 
 SAVE_PATH = f"checkpoints/{MODEL_NAME}"
 
-class weighted_binary_cross_entropy(nn.Module):
-    def __init__(self, weight=None):
-        super(weighted_binary_cross_entropy, self).__init__()
-        if weight is not None:
-            self.loss = lambda output, target: (weight * (target * torch.log(output))) + (1 * ((1 - target) * torch.log(1 - output)))
-    
-    def forward(self, output, target):
-        loss = self.loss(output, target)
-        return torch.neg(torch.mean(loss))
-
-class SCLoss(nn.Module):
-    def __init__(self, device, dim, weight=None):
-        super().__init__()
-        if weight is not None:
-            self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))))
-        else:
-            self.softmax = nn.BCELoss()
-        self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
-        self.dim = dim
-        self.lamb = 0.5
-        self.m = 0.3
-    
-    def forward(self, output, target, vectors):
-        loss = self.softmax(output, target)
-        
-        real_indexes = torch.where(target == 0)[0]
-        fake_indexes = torch.where(target == 1)[0]
-        
-        
-        real_vectors = vectors[real_indexes]
-        fake_vectors = vectors[fake_indexes]
-        
-        # Calculate Center Loss
-        
-        m_real = torch.mean((real_vectors - self.real_center).pow(2).sum(1).sqrt())
-        m_fake = torch.mean((fake_vectors - self.real_center).pow(2).sum(1).sqrt())
-        
-        if real_indexes.shape[0] == 0:
-            m_real = 0
-        if fake_indexes.shape[0] == 0:
-            m_fake = 0
-
-        L = m_real - m_fake + self.m * np.sqrt(self.dim)
-        center_loss = m_real + torch.maximum(L, torch.zeros_like(L))
-        
-        return loss + self.lamb * center_loss
-
-    def __repr__(self):
-        return "SCLoss with BCE"
 
 def get_dataset(path, training=False):
     df = pd.read_csv(path)
@@ -412,7 +364,7 @@ MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_E
 # Inference
 inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE)
 inference(model=MODEL, data_loader=celeb_df_loader, dataset_name="Celeb_DF", device=DEVICE)
-inference(model=MODEL, data_loader=faceforenics_loader, dataset_name="FaceForenics++", device=DEVICE)
+inference(model=MODEL, data_loader=faceforensics_loader, dataset_name="FaceForenics++", device=DEVICE)
 
 # Finish wandb
 wandb.finish()
