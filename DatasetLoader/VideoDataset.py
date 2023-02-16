@@ -61,6 +61,7 @@ class VideoDataset(Dataset):
             if self.aug:
                 frame = self.aug(frame, blur, flip, grey, solarize)
                 frame = frame.numpy()
+                frame = frame.transpose(1,2,0)
             
         if self.fft or self.dct:
             if self.fft:

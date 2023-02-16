@@ -368,7 +368,8 @@ class DataAugmentationImage:
         return blur, flip, grey, solarize
     
     def __call__(self, img, blur, flip, grey, solarize):
-        img = self.gaussian_blur(img) if blur == 1  else img
+        img = PIL.Image.fromarray(img.astype(np.uint8))
+        img = self.gaussian_blur(img) if blur == 1 else img
         img = self.horizontal_flip(img) if flip == 1 else img
         img = self.color_jitter(img)
         img = self.grey_scale(img) if grey == 1 else img

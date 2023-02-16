@@ -22,21 +22,24 @@ torch.backends.cudnn.allow_tf32 = True
 
 #! Hyper parameters
 
+# Debugging
+torch.autograd.set_detect_anomaly(True)
+
 # Dataset
 PATH_KODF = 'videos_16/data_video.csv'
-PATH_FACEFORENSICS = None
+PATH_FACEFORENSICS = './faceforensics/videos_16/data_video.csv' 
 PATH_DFDC = './dfdc/videos_16/test_videos.csv'
 PATH_CELEB_DF = './celeb-df/videos_16/data_video.csv'
 IMAGE_SIZE = 224
 NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-RGB = False
-FFT = True
+RGB = True
+FFT = False
 DCT = False
 IN_CHANNELS = 3 # Default
 
-assert not (RGB ^ FFT ^ DCT), "Only one of RGB, FFT or DCT can be True"
+assert (RGB ^ FFT ^ DCT), "Only one of RGB, FFT or DCT can be True"
 
 if FFT:
     IN_CHANNELS = 9
@@ -57,7 +60,7 @@ DROPOUT = 0.3
 # Training 
 WEIGHT = 0.45
 BATCH_SIZE = 8
-LR = 2e-4
+LR = 2e-3
 WEIGHT_DECAY = 1e-3
 MOMENTUM = 0.7
 PATIENCE = 5
@@ -96,40 +99,48 @@ class weighted_binary_cross_entropy(nn.Module):
         return torch.neg(torch.mean(loss))
 
 class SCLoss(nn.Module):
-    def __init__(self, device, dim, weight=None) -> None:
+    def __init__(self, device, dim, weight=None):
         super().__init__()
         if weight is not None:
-            self.softmax = lambda output, target: (weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))
+            self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))))
         else:
             self.softmax = nn.BCELoss()
         self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
-        self.euc_dist = lambda x, y: torch.sqrt(torch.sum((x - y) ** 2, dim=1))
         self.dim = dim
         self.lamb = 0.5
         self.m = 0.3
     
     def forward(self, output, target, vectors):
         loss = self.softmax(output, target)
-        loss = torch.neg(torch.mean(loss))
         
         real_indexes = torch.where(target == 0)[0]
         fake_indexes = torch.where(target == 1)[0]
+        
         
         real_vectors = vectors[real_indexes]
         fake_vectors = vectors[fake_indexes]
         
         # Calculate Center Loss
         
-        m_real = torch.mean(real_vectors - self.real_center, dim=0)
-        m_fake = torch.mean(fake_vectors - self.real_center, dim=0)
+        m_real = torch.mean((real_vectors - self.real_center).pow(2).sum(1).sqrt())
+        m_fake = torch.mean((fake_vectors - self.real_center).pow(2).sum(1).sqrt())
+        
+        if real_indexes.shape[0] == 0:
+            m_real = 0
+        if fake_indexes.shape[0] == 0:
+            m_fake = 0
+
         L = m_real - m_fake + self.m * np.sqrt(self.dim)
-        center_loss = m_real + max(L, 0)
+        center_loss = m_real + torch.maximum(L, torch.zeros_like(L))
         
         return loss + self.lamb * center_loss
 
+    def __repr__(self):
+        return "SCLoss with BCE"
+
 def get_dataset(path, training=False):
     df = pd.read_csv(path)
-    X = df['video_path'].values
+    X = df['filename'].values
     y = df['label'].values
     
     if training:
@@ -163,7 +174,6 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device):
         
         y_pred, vectors = model(X)
         loss = criteria(y_pred, y, vectors)
-            
             
         epoch_loss += loss.item()
         
@@ -217,8 +227,8 @@ def validate_epoch(model, data_loader, criteria, epoch, device):
             X = X.to(device, non_blocking=True)
             y = y.to(device, non_blocking=True)
 
-            y_pred = model(X)
-            loss = criteria(y_pred, y)
+            y_pred, vectors = model(X)
+            loss = criteria(y_pred, y, vectors)
 
             epoch_loss += loss.item()
 
@@ -327,7 +337,7 @@ def inference(model, data_loader, dataset_name, device):
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
-        y_pred = model(X)
+        y_pred, vectors = model(X)
         y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
 
         y_pred_cpu = y_pred.detach().cpu().numpy()
@@ -354,11 +364,10 @@ def inference(model, data_loader, dataset_name, device):
     wandb.run.summary[f'{dataset_name}_test_auc'] = val_auc
 
 # Initialise datasets
-train_loader, test_loader = get_dataset(PATH_DFDC, training=True)
-
+train_loader, test_loader = get_dataset(PATH_KODF, training=True)
 dfdc_loader = get_dataset(PATH_DFDC, training=False)
 celeb_df_loader = get_dataset(PATH_CELEB_DF, training=False)
-# faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
+faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
 # Initialise model
 MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, lsa=LSA, dropout=DROPOUT, head_dims=HEAD_DIM, heads=HEADS, depth=DEPTH, dim=DIM)
@@ -366,7 +375,10 @@ MODEL = MODEL.to(DEVICE)
 num_parameters = sum(p.numel() for p in MODEL.parameters())
 print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-OPTIMIZER = torch.optim.SGD(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY, momentum=MOMENTUM)
+OPTIMIZER = torch.optim.AdamW(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+
+# Initialise loss function
+CRITERIA = SCLoss(DEVICE, DIM)
 
 # Initialise wandb
 wandb_configs = {
@@ -388,14 +400,11 @@ wandb_configs = {
     'weight' : WEIGHT,
 }
 
-wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}"
+wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
 
 if LOG_WANDB:
     wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
     wandb.watch(MODEL)
-
-# Initialise loss function
-CRITERIA = SCLoss(DEVICE, DIM)
 
 # Train model
 MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE)
@@ -403,7 +412,7 @@ MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_E
 # Inference
 inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE)
 inference(model=MODEL, data_loader=celeb_df_loader, dataset_name="Celeb_DF", device=DEVICE)
-#inference(model=MODEL, data_loader=faceforenics_loader, dataset_name="FaceForenics++", device=DEVICE)
+inference(model=MODEL, data_loader=faceforenics_loader, dataset_name="FaceForenics++", device=DEVICE)
 
 # Finish wandb
 wandb.finish()

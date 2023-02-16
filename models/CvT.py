@@ -40,9 +40,10 @@ class ConvolutionalVisionTransformer(nn.Module):
         self.temporal_transformer = Transformer(token_dim=t_dim, depth=t_depth, head_dims=t_head_dims, heads=t_heads, mlp_dim=t_dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.dropout = nn.Dropout(dropout)
+
+        self.norm = nn.LayerNorm(t_dim)
         
         self.classifier = nn.Sequential(
-            nn.LayerNorm(t_dim),
             nn.Linear(t_dim, 1),
             nn.Sigmoid()
         )
@@ -68,7 +69,7 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = self.temporal_transformer(x)
         
         # Take only the cls_temporal_token
-        x = x[:,0]
+        x = self.norm(x[:,0])
         
         vectors = x
         
