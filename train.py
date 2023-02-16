@@ -1,18 +1,19 @@
+import gc
+
 import numpy as np
 import pandas as pd
 import torch
+import torchmetrics.classification as metrics
 import torch.nn as nn
 import torch.optim
-import wandb
-from sklearn.metrics import (accuracy_score, f1_score, precision_score,
-                             recall_score, roc_auc_score)
+from DatasetLoader.VideoDataset import DataLoaderWrapper
+from models.GViViT import create_model
+from models.losses import *
+from models.util import DataAugmentationImage, fix_random_seed
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
-from models.losses import *
-from models.util import DataAugmentationImage, fix_random_seed
+import wandb
 
 # Fix seed for reproducibility
 fix_random_seed(seed=11)
@@ -36,8 +37,8 @@ IMAGE_SIZE = 224
 NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-RGB = True
-FFT = False
+RGB = False
+FFT = True
 DCT = False
 IN_CHANNELS = 3 # Default
 
@@ -49,9 +50,9 @@ elif DCT:
     IN_CHANNELS = 3
 
 # Model
-MODEL_NAME = 'CvT'
+MODEL_NAME = 'GCViViT'
 DEPTH = 6
-DIM = 256
+DIM = 512
 HEADS = 6
 HEAD_DIM = 128
 PATCH_SIZE = None
@@ -62,17 +63,17 @@ DROPOUT = 0.3
 WEIGHT = 0.45
 BATCH_SIZE = 8
 LR = 2e-3
-WEIGHT_DECAY = 1e-3
+WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
 NUM_EPOCHS = 50
-LOG_WANDB = True
+LOG_WANDB = False
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
 # Create Save path and Model name
-MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}_weighted"
+MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}_oversample"
 
 if FFT:
     MODEL_NAME += "_fft"
@@ -88,6 +89,8 @@ if AUGMENTATIONS != None:
     MODEL_NAME += "_aug"
 
 SAVE_PATH = f"checkpoints/{MODEL_NAME}"
+
+
 
 
 def get_dataset(path, training=False):
@@ -108,13 +111,20 @@ def get_dataset(path, training=False):
         inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=BATCH_SIZE, shuffle=False, fft=FFT, dct=DCT)
         return inference_data
 
-def train_epoch(model, data_loader, optimizer, criteria, epoch, device):
+def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metric, f1_metric, recall_metric, precision_metric, auc_metric):
+    # Reset metrics
+    acc_metric.reset()
+    f1_metric.reset()
+    recall_metric.reset()
+    precision_metric.reset()
+    auc_metric.reset()
+    
+    torch.cuda.empty_cache()
+    gc.collect()
+    
     model.train()
     epoch_loss = 0
     epoch_acc = 0
-    epoch_precision = 0
-    epoch_recall = 0
-    epoch_f1 = 0
     idx = 0
     scaler = torch.cuda.amp.GradScaler()
     
@@ -124,53 +134,56 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device):
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
         
-        y_pred, vectors = model(X)
-        loss = criteria(y_pred, y, vectors)
+        
+        with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16):
+            y_pred, vectors = model(X)
+            loss = criteria(y_pred, y, vectors)
             
         epoch_loss += loss.item()
         
-        # Append Statistics
-        y_pred = torch.where(y_pred >= 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
-        
         # Update every other batch simulating gradient accumulation
-        if idx % 4 == 0 or idx == len(data_loader) - 1:
+        if idx % 8 == 0 or idx == len(data_loader) - 1:
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
-        
-        y_pred_cpu = y_pred.detach().cpu().numpy()
-        y_cpu = y.detach().cpu().numpy()
-        
-        y_pred_cpu = y_pred_cpu.reshape(-1)
-        y_cpu = y_cpu.reshape(-1)
             
-        epoch_acc += accuracy_score(y_cpu, y_pred_cpu)
-        epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
-        epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
-        epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+        y_pred = y_pred.detach().cpu()
+        y = y.detach().cpu()
+        
+        epoch_acc += acc_metric(y_pred, y)
+        epoch_precision = precision_metric(y_pred, y)
+        epoch_recall = recall_metric(y_pred, y)
+        epoch_f1 = f1_metric(y_pred, y)
+        epoch_auc = auc_metric(y_pred, y)
         
         
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
     
     train_loss = epoch_loss / (idx + 1)
-    train_acc = epoch_acc / (idx + 1)
-    train_precision = epoch_precision / (idx + 1)
-    train_recall = epoch_recall / (idx + 1)
-    train_f1 = epoch_f1 / (idx + 1)
+    train_acc = acc_metric.compute()
+    train_precision = precision_metric.compute()
+    train_recall = recall_metric.compute()
+    train_f1 = f1_metric.compute()
+    train_auc = auc_metric.compute()
 
-    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f}")
+    print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f} Train AUC: {train_auc:.4f}")
 
-    return train_loss, train_acc, train_f1, train_precision, train_recall
+    return train_loss, train_acc, train_f1, train_precision, train_recall, train_auc
 
 @torch.no_grad()
-def validate_epoch(model, data_loader, criteria, epoch, device):
+def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_metric, recall_metric, precision_metric, auc_metric):
+    # Reset metrics
+    acc_metric.reset()
+    f1_metric.reset()
+    recall_metric.reset()
+    precision_metric.reset()
+    auc_metric.reset()
+    
+    
     model.eval()
     epoch_loss = 0
     epoch_acc = 0
-    epoch_precision = 0
-    epoch_recall = 0
-    epoch_f1 = 0
     idx = 0
     with torch.no_grad():
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
@@ -184,32 +197,29 @@ def validate_epoch(model, data_loader, criteria, epoch, device):
 
             epoch_loss += loss.item()
 
-            y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
-        
-            y_pred_cpu = y_pred.detach().cpu().numpy()
-            y_cpu = y.detach().cpu().numpy()
+            y_pred = y_pred.detach().cpu()
+            y = y.detach().cpu()
             
-            y_pred_cpu = y_pred_cpu.reshape(-1)
-            y_cpu = y_cpu.reshape(-1)
-            
-            epoch_acc += accuracy_score(y_cpu, y_pred_cpu)
-            epoch_precision += precision_score(y_cpu, y_pred_cpu, zero_division=0)
-            epoch_recall += recall_score(y_cpu, y_pred_cpu, zero_division=0)
-            epoch_f1 += f1_score(y_cpu, y_pred_cpu, zero_division=0)
+            epoch_acc += acc_metric(y_pred, y)
+            epoch_precision = precision_metric(y_pred, y)
+            epoch_recall = recall_metric(y_pred, y)
+            epoch_f1 = f1_metric(y_pred, y)
+            epoch_auc = auc_metric(y_pred, y)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
 
     val_loss = epoch_loss / (idx + 1)
-    val_acc = epoch_acc / (idx + 1)
-    val_precision = epoch_precision / (idx + 1)
-    val_recall = epoch_recall / (idx + 1)
-    val_f1 = epoch_f1 / (idx + 1)
+    val_acc = acc_metric.compute()
+    val_precision = precision_metric.compute()
+    val_recall = recall_metric.compute()
+    val_f1 = f1_metric.compute()
+    val_auc = auc_metric.compute()
 
-    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}")
+    print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}, Validation AUC: {val_auc:.4f}")
 
-    return val_loss, val_acc, val_f1, val_precision, val_recall
+    return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc
 
-def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, patience, min_delta, save_path, device):
+def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, patience, min_delta, save_path, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric):
     previous_loss = np.inf
     patience_counter = 0
 
@@ -218,8 +228,8 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
     
     try:
         for epoch in range(epochs):
-            train_loss, train_acc, train_f1, train_precision, train_recall = train_epoch(model, train_loader, optimizer, criteria, epoch, device)
-            val_loss, val_acc, val_f1, val_precision, val_recall = validate_epoch(model, test_loader, criteria, epoch, device)
+            train_loss, train_acc, train_f1, train_precision, train_recall, train_auc = train_epoch(model, train_loader, optimizer, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
+            val_loss, val_acc, val_f1, val_precision, val_recall, val_auc = validate_epoch(model, test_loader, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
             try:
                 wandb.log({
                     "Train Loss": train_loss,
@@ -227,11 +237,13 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
                     "Train F1": train_f1,
                     "Train Precision": train_precision,
                     "Train Recall": train_recall,
+                    "Train AUC": train_auc,
                     "Val Loss": val_loss,
                     "Val Acc": val_acc,
                     "Val F1": val_f1,
                     "Val Precision": val_precision,
                     "Val Recall": val_recall,
+                    "Val AUC": val_auc,
                 })
             except Exception as e:
                 print("[ERROR] Could not upload data, temporary connection loss or something else")
@@ -273,39 +285,37 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
     return model
 
 @torch.no_grad()
-def inference(model, data_loader, dataset_name, device):
+def inference(model, data_loader, dataset_name, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric):
     model.eval()
 
-    preds = []
-    actual = []
+    # Reset metrics
+    acc_metric.reset()
+    precision_metric.reset()
+    recall_metric.reset()
+    f1_metric.reset()
+    auc_metric.reset()
     
-    val_acc = 0
-    val_precision = 0
-    val_recall = 0
-    val_f1 = 0
-    val_auc = 0
 
     for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
         X = X.to(device, non_blocking=True)
         y = y.to(device, non_blocking=True)
 
         y_pred, vectors = model(X)
-        y_pred = torch.where(y_pred > 0.5, torch.ones_like(y_pred), torch.zeros_like(y_pred))
-
-        y_pred_cpu = y_pred.detach().cpu().numpy()
-        y_cpu = y.detach().cpu().numpy()
-
-        y_pred_cpu = y_pred_cpu.reshape(-1)
-        y_cpu = y_cpu.reshape(-1)
-
-        preds.extend(y_pred_cpu)
-        actual.extend(y_cpu)
-
-    val_acc = accuracy_score(actual, preds)
-    val_precision = precision_score(actual, preds)
-    val_recall = recall_score(actual, preds)
-    val_f1 = f1_score(actual, preds)
-    val_auc = roc_auc_score(actual, preds)
+        
+        y_pred = y_pred.detach().cpu()
+        y = y.detach().cpu()
+        
+        acc = acc_metric(y_pred, y)
+        precision = precision_metric(y_pred, y)
+        recall = recall_metric(y_pred, y)
+        f1 = f1_metric(y_pred, y)
+        auc = auc_metric(y_pred, y)
+        
+    val_acc = acc_metric.compute()
+    val_precision = precision_metric.compute()
+    val_recall = recall_metric.compute()
+    val_f1 = f1_metric.compute()
+    val_auc = auc_metric.compute()
 
     print(f"Test Acc:{val_acc:.4f} Test F1:{val_f1:.4f} Test Precision:{val_precision:.4f} Test Recall:{val_recall:.4f} Test AUC:{val_auc:.4f}")
 
@@ -315,57 +325,66 @@ def inference(model, data_loader, dataset_name, device):
     wandb.run.summary[f'{dataset_name}_test_f1'] = val_f1
     wandb.run.summary[f'{dataset_name}_test_auc'] = val_auc
 
-# Initialise datasets
-train_loader, test_loader = get_dataset(PATH_KODF, training=True)
-dfdc_loader = get_dataset(PATH_DFDC, training=False)
-celeb_df_loader = get_dataset(PATH_CELEB_DF, training=False)
-faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
+if __name__ == "__main__":
+    # Initialise datasets
+    train_loader, test_loader = get_dataset(PATH_KODF, training=True)
+    dfdc_loader = get_dataset(PATH_DFDC, training=False)
+    celeb_df_loader = get_dataset(PATH_CELEB_DF, training=False)
+    faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
-# Initialise model
-MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, lsa=LSA, dropout=DROPOUT, head_dims=HEAD_DIM, heads=HEADS, depth=DEPTH, dim=DIM)
-MODEL = MODEL.to(DEVICE)
-num_parameters = sum(p.numel() for p in MODEL.parameters())
-print(f"[INFO] Number of parameters in model : {num_parameters:,}")
+    # Initialise model
+    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, lsa=LSA)
+    MODEL = MODEL.to(DEVICE)
+    num_parameters = sum(p.numel() for p in MODEL.parameters())
+    print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-OPTIMIZER = torch.optim.AdamW(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    OPTIMIZER = torch.optim.AdamW(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    
+    # Initialise Metrics
 
-# Initialise loss function
-CRITERIA = SCLoss(DEVICE, DIM)
+    accuracy = metrics.BinaryAccuracy()
+    auroc = metrics.AUROC(task='binary')
+    f1 = metrics.BinaryF1Score()
+    recall = metrics.BinaryRecall()
+    precision = metrics.BinaryPrecision()
 
-# Initialise wandb
-wandb_configs = {
-    "epochs": NUM_EPOCHS,
-    "batch_size": BATCH_SIZE,
-    "num_frames" : NUM_FRAMES,
-    "architecture": MODEL_NAME,
-    "save_path": SAVE_PATH,
-    "optimizer": str(OPTIMIZER),
-    "patience" : PATIENCE,
-    "lr" : LR,
-    "weight_decay": WEIGHT_DECAY,
-    "min_delta" : MIN_DELTA,
-    'patch_size' : PATCH_SIZE,
-    'dim': DIM,
-    'heads' : HEADS,
-    'head_dims' : HEAD_DIM,
-    'depth': DEPTH,
-    'weight' : WEIGHT,
-}
+    # Initialise loss function
+    CRITERIA = SCLoss(DEVICE, DIM)
 
-wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
+    # Initialise wandb
+    wandb_configs = {
+        "epochs": NUM_EPOCHS,
+        "batch_size": BATCH_SIZE,
+        "num_frames" : NUM_FRAMES,
+        "architecture": MODEL_NAME,
+        "save_path": SAVE_PATH,
+        "optimizer": str(OPTIMIZER),
+        "patience" : PATIENCE,
+        "lr" : LR,
+        "weight_decay": WEIGHT_DECAY,
+        "min_delta" : MIN_DELTA,
+        'patch_size' : PATCH_SIZE,
+        'dim': DIM,
+        'heads' : HEADS,
+        'head_dims' : HEAD_DIM,
+        'depth': DEPTH,
+        'weight' : WEIGHT,
+    }
 
-if LOG_WANDB:
-    wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
-    wandb.watch(MODEL)
+    wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
 
-# Train model
-MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE)
+    if LOG_WANDB:
+        wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
+        wandb.watch(MODEL)
 
-# Inference
-inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE)
-inference(model=MODEL, data_loader=celeb_df_loader, dataset_name="Celeb_DF", device=DEVICE)
-inference(model=MODEL, data_loader=faceforensics_loader, dataset_name="FaceForenics++", device=DEVICE)
+    # Train model
+    MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE, acc_metric=accuracy, auc_metric=auroc, f1_metric=f1, recall_metric=recall, precision_metric=precision)
 
-# Finish wandb
-wandb.finish()
+    # Inference
+    inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE, acc_metric=accuracy, precision_metric=precision, recall_metric=recall, f1_metric=f1, auc_metric=auroc)
+    inference(model=MODEL, data_loader=celeb_df_loader, dataset_name="Celeb_DF", device=DEVICE, acc_metric=accuracy, precision_metric=precision, recall_metric=recall, f1_metric=f1, auc_metric=auroc)
+    inference(model=MODEL, data_loader=faceforensics_loader, dataset_name="FaceForenics++", device=DEVICE, acc_metric=accuracy, precision_metric=precision, recall_metric=recall, f1_metric=f1, auc_metric=auroc)
+
+    # Finish wandb
+    wandb.finish()
 

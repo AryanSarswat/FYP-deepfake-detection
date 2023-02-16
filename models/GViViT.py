@@ -412,7 +412,6 @@ class GCViViT(nn.Module):
         self.head = nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, 1),
-            nn.Sigmoid()
         )
         
         # Initialize weights
@@ -482,12 +481,12 @@ GCViT_tiny_config = {
 }
 
 
-def create_model(num_frames, in_channels):
-    model = GCViViT(num_frames=num_frames, in_channels=in_channels)
+def create_model(num_frames, in_channels, lsa=False):
+    model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa)
     return model
 
-def load_model(path, num_frames, in_channels):
-    model = create_model(num_frames, in_channels)
+def load_model(path, num_frames, in_channels, lsa=False) :
+    model = create_model(num_frames, in_channelsm, lsa=lsa)
     model.load_state_dict(torch.load(path))
     return model
 

@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-import torch.functional as F
+import torch.nn.functional as F
 import torch.nn as nn
 
 
@@ -30,7 +30,7 @@ class SCLoss(nn.Module):
         if weight is not None:
             self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))))
         else:
-            self.softmax = nn.BCELoss()
+            self.softmax = nn.BCEWithLogitsLoss()
         self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
         self.dim = dim
         self.lamb = 0.5
