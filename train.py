@@ -42,13 +42,16 @@ AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 RGB = False
 FFT = True
 DCT = False
+WAVELET = False
 IN_CHANNELS = 3 # Default
 
-assert (RGB ^ FFT ^ DCT), "Only one of RGB, FFT or DCT can be True"
+assert (RGB ^ FFT ^ DCT ^ WAVELET), "Only one of RGB, FFT or DCT can be True"
 
 if FFT:
     IN_CHANNELS = 6
 elif DCT:
+    IN_CHANNELS = 3
+elif WAVELET:
     IN_CHANNELS = 3
 
 # Model
@@ -105,8 +108,8 @@ def get_dataset(path, training=False):
 
         print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}")
 
-        train_loader = DataLoaderWrapper(X_train, y_train, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=AUGMENTATIONS, batch_size=BATCH_SIZE, shuffle=True, fft=FFT, dct=DCT)
-        test_loader = DataLoaderWrapper(X_test, y_test, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=None, batch_size=BATCH_SIZE, fft=FFT, dct=DCT)
+        train_loader = DataLoaderWrapper(X_train, y_train, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=AUGMENTATIONS, batch_size=BATCH_SIZE, shuffle=True, fft=FFT, dct=DCT, wavelet=WAVELET)
+        test_loader = DataLoaderWrapper(X_test, y_test, num_frames=NUM_FRAMES, height=IMAGE_SIZE, width=IMAGE_SIZE, transforms=None, batch_size=BATCH_SIZE, fft=FFT, dct=DCT, wavelet=WAVELET)
         
         return train_loader, test_loader
     else:
