@@ -81,6 +81,8 @@ if FFT:
     MODEL_NAME += "_fft_only"
 elif DCT:
     MODEL_NAME += "_dct_only"
+elif WAVELET:
+    MODEL_NAME += "wavelet_only"
 else:
     MODEL_NAME += "_rgb"
     
@@ -91,9 +93,6 @@ if AUGMENTATIONS != None:
     MODEL_NAME += "_aug"
 
 SAVE_PATH = f"checkpoints/{MODEL_NAME}"
-
-
-
 
 def get_dataset(path, training=False):
     df = pd.read_csv(path)
