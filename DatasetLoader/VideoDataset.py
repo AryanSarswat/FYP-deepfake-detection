@@ -33,9 +33,9 @@ class VideoDataset(Dataset):
         NUM_CHANNELS = 3 
         
         if self.fft:
-            NUM_CHANNELS += 6
+            NUM_CHANNELS = 6
         elif self.dct:
-            NUM_CHANNELS += 3
+            NUM_CHANNELS = 3
             
         frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
@@ -69,8 +69,8 @@ class VideoDataset(Dataset):
             elif self.dct:
                 to_concat = img_discrete_cosine_transform(frame)
                 
-            frame = np.concatenate((frame, to_concat), axis=2)
-        
+            frame = to_concat
+
         frame = frame.astype(np.float32)
         frame = frame.transpose(2,0,1)
         frame = torch.from_numpy(frame)

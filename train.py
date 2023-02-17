@@ -26,7 +26,9 @@ torch.backends.cudnn.allow_tf32 = True
 
 #! Hyper parameters
 # Debugging
-torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(False)
+torch.autograd.profiler.profile(False)
+torch.autograd.profiler.emit_nvtx(False)
 
 # Dataset
 PATH_KODF = 'videos_16/data_video.csv'
@@ -45,30 +47,30 @@ IN_CHANNELS = 3 # Default
 assert (RGB ^ FFT ^ DCT), "Only one of RGB, FFT or DCT can be True"
 
 if FFT:
-    IN_CHANNELS = 9
+    IN_CHANNELS = 6
 elif DCT:
     IN_CHANNELS = 3
 
 # Model
 MODEL_NAME = 'GCViViT'
 DEPTH = 6
-DIM = 512
+DIM = 768
 HEADS = 6
 HEAD_DIM = 128
 PATCH_SIZE = None
-LSA = True
+LSA = False
 DROPOUT = 0.3
 
 # Training 
 WEIGHT = 0.45
-BATCH_SIZE = 8
+BATCH_SIZE = 4
 LR = 2e-3
-WEIGHT_DECAY = 1e-4
+WEIGHT_DECAY = 1e-5
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
 NUM_EPOCHS = 50
-LOG_WANDB = False
+LOG_WANDB = True
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
@@ -76,9 +78,9 @@ print(f"Using device: {DEVICE}")
 MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}_oversample"
 
 if FFT:
-    MODEL_NAME += "_fft"
+    MODEL_NAME += "_fft_only"
 elif DCT:
-    MODEL_NAME += "_dct"
+    MODEL_NAME += "_dct_only"
 else:
     MODEL_NAME += "_rgb"
     
@@ -333,7 +335,7 @@ if __name__ == "__main__":
     faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
     # Initialise model
-    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, lsa=LSA)
+    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, dim=DIM, lsa=LSA)
     MODEL = MODEL.to(DEVICE)
     num_parameters = sum(p.numel() for p in MODEL.parameters())
     print(f"[INFO] Number of parameters in model : {num_parameters:,}")
@@ -374,7 +376,7 @@ if __name__ == "__main__":
     wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
 
     if LOG_WANDB:
-        wandb.init(project="deepfake-baseline", config=wandb_configs, name=wandb_configs["experiment_name"])
+        wandb.init(project="deepfake-models", config=wandb_configs, name=wandb_configs["experiment_name"])
         wandb.watch(MODEL)
 
     # Train model
