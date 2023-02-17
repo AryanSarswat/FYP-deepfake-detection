@@ -26,7 +26,7 @@ class VideoDataset(Dataset):
         self.fft = fft
         self.dct = dct
         self.wavelet = wavelet
-        assert not (self.fft and self.dct), "Cannot use both fft and dct"
+        assert not (self.fft ^ self.dct ^ self.wavelet), "Cannot use both fft and dct"
         
     def read_video(self, path):
         
@@ -36,9 +36,9 @@ class VideoDataset(Dataset):
         NUM_CHANNELS = 3 
         
         if self.fft:
-            NUM_CHANNELS += 6
+            NUM_CHANNELS = 6
         elif self.dct:
-            NUM_CHANNELS += 3
+            NUM_CHANNELS = 3
         elif self.wavelet:
             NUM_CHANNELS = 3
             
@@ -76,7 +76,6 @@ class VideoDataset(Dataset):
             elif self.wavelet:
                 frame = img_wavelet_transform(frame)
                 
-        
         frame = frame.astype(np.float32)
         frame = frame.transpose(2,0,1)
         frame = torch.from_numpy(frame)

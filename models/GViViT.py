@@ -372,7 +372,7 @@ class GCViT(nn.Module):
 class GCViViT(nn.Module):
     """Class for Global Video Vision Transformer.
     """
-    def __init__(self, num_frames: int, in_channels, dim: int = 512, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
+    def __init__(self, num_frames: int, in_channels, dim: int = 1024, depth: int = 4, heads: int = 3, head_dims: int = 64, dropout: float = 0., scale_dim: int = 4, spt=False, lsa=False):
         """Constructor for ViViT.
 
         Args:
@@ -392,13 +392,13 @@ class GCViViT(nn.Module):
         super().__init__()
         
         self.spatial_transformer = GCViT(
-            depths=GCViT_tiny_config['depths'],
-            num_heads=GCViT_tiny_config['num_heads'],
-            window_size=GCViT_tiny_config['window_size'],
-            dim=GCViT_tiny_config['dim'],
-            mlp_ratio=GCViT_tiny_config['mlp_ratio'],
-            drop_path_rate=GCViT_tiny_config['drop_path_rate'],
-            layer_scale=GCViT_tiny_config['layer_scale'],
+            depths=GCViT_small_config['depths'],
+            num_heads=GCViT_small_config['num_heads'],
+            window_size=GCViT_small_config['window_size'],
+            dim=GCViT_small_config['dim'],
+            mlp_ratio=GCViT_small_config['mlp_ratio'],
+            drop_path_rate=GCViT_small_config['drop_path_rate'],
+            layer_scale=GCViT_small_config['layer_scale'],
             in_chan=in_channels,
         )
         
@@ -481,8 +481,8 @@ GCViT_tiny_config = {
 }
 
 
-def create_model(num_frames, in_channels, lsa=False):
-    model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa)
+def create_model(num_frames, in_channels, dim, lsa=False):
+    model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa, dim=dim)
     return model
 
 def load_model(path, num_frames, in_channels, lsa=False) :
