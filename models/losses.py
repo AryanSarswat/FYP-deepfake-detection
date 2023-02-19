@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
-
+import torchvision
 
 class weighted_binary_cross_entropy(nn.Module):
     def __init__(self, weight=None):
@@ -22,15 +22,41 @@ class weighted_binary_cross_entropy(nn.Module):
             return "Binary Cross Entropy"
         else:
             return "{self.weight} Weighted Binary Cross Entropy"
+        
+class Focal_Loss(nn.Module):
+    def __init__(self, alpha=0.25, gamma=2, reduction='mean'):
+        super().__init__()
+        self.loss = nn.BCEWithLogitsLoss(reduction=reduction)
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduce = reduction
+        
+    def forward(self, output, target):
+        p = torch.sigmoid(output)
+        ce_loss = self.loss(output, target)
+        p_t = p * target + (1 - p) * (1 - target)
+        loss = ce_loss * ((1 - p_t) ** self.gamma)
+        
+        if self.alpha >= 0:
+            alpha_t = self.alpha * target + (1 - self.alpha) * (1 - target)
+            loss = alpha_t * loss
+        
+        if self.reduce == 'mean':
+            return loss.mean()
+        else:
+            return loss.sum()
 
 class SCLoss(nn.Module):
-    def __init__(self, device, dim, weight=None):
+    def __init__(self, device, dim, weight=None, use_focal=False):
         super().__init__()
         self.weight = weight
         if weight is not None:
             self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))))
+        elif use_focal:
+            self.softmax = Focal_Loss()
         else:
             self.softmax = nn.BCEWithLogitsLoss()
+            
         self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
         self.dim = dim
         self.lamb = 0.5
@@ -63,3 +89,4 @@ class SCLoss(nn.Module):
             return "SCLoss with BCE"
         else:
             return f"{self.weight} Weighted BCE with SCLoss"
+        
