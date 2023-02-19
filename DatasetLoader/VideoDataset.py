@@ -26,7 +26,7 @@ class VideoDataset(Dataset):
         self.fft = fft
         self.dct = dct
         self.wavelet = wavelet
-        assert not (self.fft ^ self.dct ^ self.wavelet), "Cannot use both fft and dct"
+        assert (self.fft ^ self.dct ^ self.wavelet), "Cannot use both fft and dct"
         
     def read_video(self, path):
         
@@ -94,7 +94,7 @@ class VideoDataset(Dataset):
 class DataLoaderWrapper(DataLoader):
     def __init__(self, X, y, transforms, num_frames=16, height=224, width=224, batch_size=1, shuffle=False, fft=False, dct=False, wavelet=False):
         dataset = VideoDataset(X, y, height=height, width=width, num_frames=num_frames, transforms=transforms, fft=fft, dct=dct, wavelet=wavelet)
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=8)
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True)
 
 def normalize(img):
     img = (img - img.min()) / (img.max() - img.min())
@@ -121,13 +121,15 @@ def img_discrete_cosine_transform(img):
 
 def img_wavelet_transform(img):
     if img.shape[0] != 3:
-        img = img.transpose(1,2,0)
+        img = img.transpose(2,0,1)
         
     if type(img) != torch.Tensor:
         img = torch.from_numpy(img).to(torch.float64)
-        
+    
+
     coeffs = ptwt.wavedec2(img, pywt.Wavelet("haar"), level=2, mode="constant")
     cA, (cAH, cAV, cAD), (cH, cV, cD) = coeffs
+    
     cA = normalize(cA).squeeze(dim=1)
     cH = normalize(cH).squeeze(dim=1)
     cV = normalize(cV).squeeze(dim=1)

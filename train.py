@@ -40,9 +40,9 @@ NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
 RGB = False
-FFT = True
+FFT = False
 DCT = False
-WAVELET = False
+WAVELET = True
 IN_CHANNELS = 3 # Default
 
 assert (RGB ^ FFT ^ DCT ^ WAVELET), "Only one of RGB, FFT or DCT can be True"
@@ -68,7 +68,7 @@ DROPOUT = 0.3
 WEIGHT = 0.45
 BATCH_SIZE = 4
 LR = 2e-3
-WEIGHT_DECAY = 1e-5
+WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
@@ -112,7 +112,7 @@ def get_dataset(path, training=False):
         
         return train_loader, test_loader
     else:
-        inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=BATCH_SIZE, shuffle=False, fft=FFT, dct=DCT)
+        inference_data = DataLoaderWrapper(X, y, transforms=None, batch_size=BATCH_SIZE, shuffle=False, fft=FFT, dct=DCT, wavelet=WAVELET)
         return inference_data
 
 def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metric, f1_metric, recall_metric, precision_metric, auc_metric):
