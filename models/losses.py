@@ -24,27 +24,28 @@ class weighted_binary_cross_entropy(nn.Module):
             return "{self.weight} Weighted Binary Cross Entropy"
         
 class Focal_Loss(nn.Module):
-    def __init__(self, alpha=0.25, gamma=2, reduction='mean'):
+    def __init__(self, alpha=0.3, gamma=2, reduction='mean'):
         super().__init__()
-        self.loss = nn.BCEWithLogitsLoss(reduction=reduction)
         self.alpha = alpha
         self.gamma = gamma
-        self.reduce = reduction
+        self.reduction = reduction
         
     def forward(self, output, target):
         p = torch.sigmoid(output)
-        ce_loss = self.loss(output, target)
+        ce_loss = F.binary_cross_entropy_with_logits(output, target, reduction='none')
         p_t = p * target + (1 - p) * (1 - target)
         loss = ce_loss * ((1 - p_t) ** self.gamma)
-        
+
         if self.alpha >= 0:
             alpha_t = self.alpha * target + (1 - self.alpha) * (1 - target)
             loss = alpha_t * loss
-        
-        if self.reduce == 'mean':
-            return loss.mean()
-        else:
-            return loss.sum()
+
+        if self.reduction == 'mean':
+            loss = loss.mean()
+        elif self.reduction == 'sum':
+            loss = loss.sum()
+
+        return loss
 
 class SCLoss(nn.Module):
     def __init__(self, device, dim, weight=None, use_focal=False):
@@ -82,7 +83,7 @@ class SCLoss(nn.Module):
 
         center_loss = m_real + m_fake
         
-        return loss + self.lamb * center_loss
+        return loss, self.lamb * center_loss
 
     def __repr__(self):
         if self.weight is None:

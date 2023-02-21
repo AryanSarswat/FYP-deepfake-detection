@@ -361,10 +361,10 @@ class DataAugmentationImage:
         self.solarize = transforms.RandomSolarize(170, p=1)
         
     def get_transforms(self):
-        blur = 1 if np.random.random() < 0.1 else 0
+        blur = 1 if np.random.random() < 0.25 else 0
         flip = 1 if np.random.random() < 0.5 else 0
         grey = 1 if np.random.random() < 0.2 else 0
-        solarize = 1 if np.random.random() < 0.2 else 0
+        solarize = 1 if np.random.random() < 0.3 else 0
         return blur, flip, grey, solarize
     
     def __call__(self, img, blur, flip, grey, solarize):

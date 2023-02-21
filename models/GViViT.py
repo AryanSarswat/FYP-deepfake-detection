@@ -481,8 +481,8 @@ GCViT_tiny_config = {
 }
 
 
-def create_model(num_frames, in_channels, dim, lsa=False):
-    model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa, dim=dim)
+def create_model(num_frames, in_channels, dim, dropout=0, lsa=False):
+    model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa, dim=dim, dropout=dropout)
     return model
 
 def load_model(path, num_frames, in_channels, lsa=False) :

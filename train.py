@@ -7,7 +7,7 @@ import torchmetrics.classification as metrics
 import torch.nn as nn
 import torch.optim
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.GViViT import create_model
+from models.CvT import create_model
 from models.losses import *
 from models.util import DataAugmentationImage, fix_random_seed
 from sklearn.model_selection import train_test_split
@@ -39,10 +39,10 @@ IMAGE_SIZE = 224
 NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-RGB = False
+RGB = True
 FFT = False
 DCT = False
-WAVELET = True
+WAVELET = False
 IN_CHANNELS = 3 # Default
 
 assert (RGB ^ FFT ^ DCT ^ WAVELET), "Only one of RGB, FFT or DCT can be True"
@@ -55,37 +55,37 @@ elif WAVELET:
     IN_CHANNELS = 3
 
 # Model
-MODEL_NAME = 'GCViViT'
+MODEL_NAME = 'CvT'
 DEPTH = 6
-DIM = 768
-HEADS = 6
-HEAD_DIM = 128
+DIM = 512
+HEADS = 8
+HEAD_DIM = 256
 PATCH_SIZE = None
-LSA = False
+LSA = True
 DROPOUT = 0.3
 
 # Training 
 WEIGHT = 0.45
-BATCH_SIZE = 4
+BATCH_SIZE = 16
 LR = 2e-3
 WEIGHT_DECAY = 1e-4
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
-NUM_EPOCHS = 50
+NUM_EPOCHS = 20
 LOG_WANDB = True
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
 # Create Save path and Model name
-MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}_oversample"
+MODEL_NAME = f"{MODEL_NAME}_{WEIGHT}"
 
 if FFT:
     MODEL_NAME += "_fft_only"
 elif DCT:
     MODEL_NAME += "_dct_only"
 elif WAVELET:
-    MODEL_NAME += "wavelet_only"
+    MODEL_NAME += "_wavelet_only"
 else:
     MODEL_NAME += "_rgb"
     
@@ -141,7 +141,8 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metr
         
         with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16):
             y_pred, vectors = model(X)
-            loss = criteria(y_pred, y, vectors)
+            loss, center_loss = criteria(y_pred, y, vectors)
+            loss = loss + center_loss
             
         epoch_loss += loss.item()
         
@@ -153,7 +154,7 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metr
             optimizer.zero_grad(set_to_none=True)
             
         y_pred = y_pred.detach().cpu()
-        y = y.detach().cpu()
+        y = y.detach().cpu().int()
         
         epoch_acc += acc_metric(y_pred, y)
         epoch_precision = precision_metric(y_pred, y)
@@ -197,12 +198,13 @@ def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_m
             y = y.to(device, non_blocking=True)
 
             y_pred, vectors = model(X)
-            loss = criteria(y_pred, y, vectors)
+            loss, center_loss = criteria(y_pred, y, vectors)
+            loss = loss + center_loss
 
             epoch_loss += loss.item()
 
             y_pred = y_pred.detach().cpu()
-            y = y.detach().cpu()
+            y = y.detach().cpu().int()
             
             epoch_acc += acc_metric(y_pred, y)
             epoch_precision = precision_metric(y_pred, y)
@@ -307,7 +309,8 @@ def inference(model, data_loader, dataset_name, device, acc_metric, precision_me
         y_pred, vectors = model(X)
         
         y_pred = y_pred.detach().cpu()
-        y = y.detach().cpu()
+        y = y.detach().cpu().int()
+
         
         acc = acc_metric(y_pred, y)
         precision = precision_metric(y_pred, y)
@@ -337,7 +340,7 @@ if __name__ == "__main__":
     faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
     # Initialise model
-    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, dim=DIM, lsa=LSA)
+    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, dim=DIM, depth=DEPTH, heads=HEADS, head_dims=HEAD_DIM, lsa=LSA, dropout=DROPOUT)
     MODEL = MODEL.to(DEVICE)
     num_parameters = sum(p.numel() for p in MODEL.parameters())
     print(f"[INFO] Number of parameters in model : {num_parameters:,}")
@@ -347,7 +350,7 @@ if __name__ == "__main__":
     # Initialise Metrics
 
     accuracy = metrics.BinaryAccuracy()
-    auroc = metrics.AUROC(task='binary')
+    auroc = metrics.BinaryAUROC()
     f1 = metrics.BinaryF1Score()
     recall = metrics.BinaryRecall()
     precision = metrics.BinaryPrecision()
