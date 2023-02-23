@@ -1,4 +1,3 @@
-import gc
 import os
 
 import cv2
@@ -21,20 +20,16 @@ torch.autograd.set_detect_anomaly(False)
 torch.autograd.profiler.profile(False)
 torch.autograd.profiler.emit_nvtx(False)
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-mtcnn = MTCNN(image_size=224, select_larget=True, post_process=False, device=device)
-
-
 def get_bounding_box(x1, y1, x2, y2):
-    y2 += (y2 - y1) / 10
     w = x2 - x1
     h = y2 - y1
-    diff_h_w = (h - w) / 2
-    x1 -= diff_h_w
-    x2 += diff_h_w
+    x1 -= w // 3
+    x2 += w // 3
+    y1 -= h // 3
+    y2 += h // 3 
     return x1, y1, x2, y2
 
-def convert_video_to_images(src_path, dest_path, num_frames=32):
+def convert_video_to_images(src_path, dest_path, num_frames=32, device=None):
     vidcap = cv2.VideoCapture(src_path)
     
     total_frames = int(vidcap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -51,7 +46,9 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         if not success:
             break
         
-        boxes, probs = mtcnn.detect(image)
+        temp = torch.from_numpy(image)
+        temp = temp.to(device)
+        boxes, probs = mtcnn.detect(temp)
         xmin, ymin, xmax, ymax = boxes[0]
         xmin, ymin, xmax, ymax = get_bounding_box(xmin, ymin, xmax, ymax)
         crop_frame = image[int(ymin):int(ymax), int(xmin):int(xmax)]
@@ -61,46 +58,36 @@ def convert_video_to_images(src_path, dest_path, num_frames=32):
         path_to_save = os.path.join(dest_path, f'{idx}.jpg')
         cv2.imwrite(path_to_save, crop_frame)
     
-class ProcessDataset(Dataset):
-    def __init__(self, src_path, dest_path, num_frames, isReal=True):
-        self.X = []
-        for dirpath, dirnames, filenames in tqdm(os.walk(src_path)):
-            for filename in filenames:
-                if filename.endswith('.mp4'):
-                    self.X.append(os.path.join(dirpath, filename))
-        if isReal:
-            dest_path = os.path.join(DEST_PATH, 'real')
-        else:
-            dest_path = os.path.join(DEST_PATH, 'fake')
-        
-        self.y = dest_path
-        
-        if not os.path.exists(dest_path):
-            os.makedirs(dest_path, exist_ok=True)
-        
-        self.num_frames = num_frames
-        
-    def __len__(self):
-        return len(self.X)
-    
-    def __getitem__(self, idx):
-        video_path = self.X[idx]
-        convert_video_to_images(video_path, self.y, num_frames=self.num_frames)
-        return None, None
-
-class DataLoaderWrapper(DataLoader):
-    def __init__(self, src_path, dest_path, isReal, num_frames, workers=8, batch_size=4):
-        dataset = ProcessDataset(src_path=src_path, dest_path=dest_path, num_frames=num_frames, isReal=isReal)
-        super().__init__(dataset, batch_size=batch_size, num_workers=workers)
 
 if __name__ == "__main__":
-    PATH = ''
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    mtcnn = MTCNN(image_size=224, select_largest=True, post_process=False, device=device)
+    PATH = '../../../../hdd/data/KoDF/kodf_release/original_videos/'
+    PATH_FS = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/fo'
+    PATH_FO = '../../../../hdd/data/KoDF/kodf_release/synthesized_videos/fsgan'
     DEST_PATH = 'KoDF/videos_32/'
-    print("[INFO] Preprocessing real videos...")
-    wr = DataLoaderWrapper(PATH, DEST_PATH, isReal=True, num_frames=32)
-    
-    for n1, n2 in tqdm(wr):
-        temp1, temp2 = n1, n2
-        
-    #print("[INFO] Preprocessing fake videos...")
-    #preprocess(TEST_PATH_1, num_frames=16)
+    isReal = False
+
+    files = []
+
+
+    for dirpath, dirnames, filenames in os.walk(PATH_FO):
+        for filename in filenames:
+            if filename.endswith('.mp4'):
+                files.append(os.path.join(dirpath, filename))
+
+    dest_path = os.path.join(DEST_PATH, 'real') if isReal else os.path.join(DEST_PATH, 'fake')
+
+    os.makedirs(dest_path, exist_ok=True)
+
+
+    for src_path in tqdm(files):
+        dst_file_path = os.path.join(dest_path, src_path.split('/')[-1])
+        try:
+            convert_video_to_images(src_path, dst_file_path, num_frames=32)
+        except Exception as e:
+            print(f"[ERROR] Can't process file {src_path}")
+            print(e)
+            dst_file_path = dst_file_path.replace('.mp4', '')
+            os.rmdir(dst_file_path)
+            
