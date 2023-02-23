@@ -485,8 +485,8 @@ def create_model(num_frames, in_channels, dim, lsa=False):
     model = GCViViT(num_frames=num_frames, in_channels=in_channels, lsa=lsa, dim=dim)
     return model
 
-def load_model(path, num_frames, in_channels, lsa=False) :
-    model = create_model(num_frames, in_channelsm, lsa=lsa)
+def load_model(path, num_frames, in_channels, dim, lsa=False) :
+    model = create_model(num_frames, in_channels, dim, lsa=lsa)
     model.load_state_dict(torch.load(path))
     return model
 
