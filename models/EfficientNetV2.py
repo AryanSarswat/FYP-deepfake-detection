@@ -4,7 +4,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 
-from .layers import ConvBNAct, MBConv
+from layers import ConvBNAct, MBConv
 
 
 class EfficientNetV2(nn.Module):

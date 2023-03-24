@@ -346,10 +346,11 @@ class DataAugmentationImage:
         
         self.gaussian_blur = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))
         
-        
+        self.random_rotation = transforms.RandomRotation(degrees=30, p=1)
         self.horizontal_flip = transforms.RandomHorizontalFlip(p=1)
         self.color_jitter = transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2)
         self.grey_scale = transforms.RandomGrayscale(p=1)
+        self.sharpness = transforms.RandomSharpness(sharpness_factor=0.4, p=1)
 
         self.normalize = transforms.Compose(
             [
@@ -364,15 +365,20 @@ class DataAugmentationImage:
         blur = 1 if np.random.random() < 0.25 else 0
         flip = 1 if np.random.random() < 0.5 else 0
         grey = 1 if np.random.random() < 0.2 else 0
-        solarize = 1 if np.random.random() < 0.3 else 0
-        return blur, flip, grey, solarize
+        color_jitter = 1 if np.random.random() < 0.5 else 0
+        rotation = 1 if np.random.random() < 0.3 else 0
+        solarize = 1 if np.random.random() < 0.1 else 0
+        sharpness = 1 if np.random.random() < 0.25 else 0
+        return blur, flip, grey, solarize, color_jitter, rotation, sharpness
     
-    def __call__(self, img, blur, flip, grey, solarize):
+    def __call__(self, img, blur, flip, grey, solarize, color_jitter, rotation, sharpness):
         img = PIL.Image.fromarray(img.astype(np.uint8))
         img = self.gaussian_blur(img) if blur == 1 else img
         img = self.horizontal_flip(img) if flip == 1 else img
-        img = self.color_jitter(img)
-        img = self.grey_scale(img) if grey == 1 else img
+        img = self.color_jitter(img) if color_jitter == 1 else img
+        img = self.random_rotation(img) if rotation == 1 else img
+        img = self.sharpness(img) if sharpness == 1 else img
+        #img = self.grey_scale(img) if grey == 1 else img
         img = self.solarize(img) if solarize == 1 else img
         img = self.normalize(img)
         

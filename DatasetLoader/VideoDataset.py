@@ -12,6 +12,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 from tqdm import tqdm
+from shutil import rmtree
 
 
 class VideoDataset(Dataset):
@@ -45,12 +46,12 @@ class VideoDataset(Dataset):
         frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
         if self.aug:
-            blur, flip, grey, solarize =  self.aug.get_transforms()
+            blur, flip, grey, solarize, color_jitter, rotation, sharpness = self.aug.get_transforms()
         
         for idx in prange(len(files)):
             file_path = os.path.join(path, files[idx])
             if self.aug:
-                frames[idx] = self.read_file(file_path, blur=blur, flip=flip, grey=grey, solarize=solarize)
+                frames[idx] = self.read_file(file_path, blur=blur, flip=flip, grey=grey, solarize=solarize, color_jitter=color_jitter, rotation=rotation, sharpness=sharpness)
             else:
                 frames[idx] = self.read_file(file_path)
         
@@ -87,14 +88,15 @@ class VideoDataset(Dataset):
     
     def __getitem__(self, idx):
         video = self.read_video(self.X[idx])
-        labels = torch.tensor(self.y[idx], dtype=torch.float)
-        labels = torch.unsqueeze(labels, 0)
-        return video, labels
+        label_t = torch.tensor([self.y[idx]], dtype=torch.float)
+        # label for spatial feature
+        label_s = torch.tensor([self.y[idx] for _ in range(self.num_frames)], dtype=torch.float)
+        return video, label_t, label_s
     
 class DataLoaderWrapper(DataLoader):
     def __init__(self, X, y, transforms, num_frames=16, height=224, width=224, batch_size=1, shuffle=False, fft=False, dct=False, wavelet=False):
         dataset = VideoDataset(X, y, height=height, width=width, num_frames=num_frames, transforms=transforms, fft=fft, dct=dct, wavelet=wavelet)
-        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=12)
+        super().__init__(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=os.cpu_count())
 
 def normalize(img):
     img = (img - img.min()) / (img.max() - img.min())
@@ -158,19 +160,25 @@ def img_wavelet_transform(img):
     return out
 
 if __name__ == "__main__":
-    PATH = 'videos_16/data_video.csv'
+    PATH = './celeb-df/videos_16/data_video.csv'
 
     df = pd.read_csv(PATH)
-    X = df['video_path'].values
+    print(df.head())
+    X = df['filename'].values
     y = df['label'].values
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 
     print(f"X_train: {X_train.shape}, X_test: {X_test.shape}, y_train: {y_train.shape}, y_test: {y_test.shape}") 
     
-
-    for path in tqdm(X):
-        num_frames = len(os.listdir(path))
-        if (num_frames != 16):
-            print(f"[ERROR] Path {path} does not have 16 frames exactly")
+    train_dataset = DataLoaderWrapper(X_train, y_train, transforms=None, num_frames=16, height=224, width=224, batch_size=2, shuffle=False, fft=False, dct=False, wavelet=False)
+    
+    for idx, (video, label_t, label_s) in enumerate(train_dataset):
+        print(video.shape)
+        print(label_t.shape)
+        print(label_s.shape)
+        
+        if idx == 0:
+            break
+    
     

@@ -47,17 +47,32 @@ def convert_video_to_images(src_path, dest_path, num_frames=16):
     dest_path = dest_path.replace('.mp4', '')
     os.makedirs(dest_path, exist_ok=True)
     
-    for idx, frame_num in enumerate(idxs):
-        vidcap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
-        success, image = vidcap.read()
+    i = 0
+    
+    for frame_num in range(int(total_frames)):
+        ret = vidcap.grab()
         
-        if not success:
-            break
+        if not ret:
+            print('Error grabbing frame {} from {}'.format(frame_num, src_path))
         
-        image = cv2.resize(image, (224, 224))
+        if frame_num >= idxs[i]:
+            success, image = vidcap.retrieve()
+            
+            if not ret:
+                print('Error retrieving frame {} from {}'.format(frame_num, src_path))
+            else:
+                image = cv2.resize(image, (224, 224))
 
-        path_to_save = os.path.join(dest_path, f'{idx}.jpg')
-        cv2.imwrite(path_to_save, image)
+                path_to_save = os.path.join(dest_path, f'{idx}.jpg')
+                cv2.imwrite(path_to_save, image)
+            
+            i += 1
+            if i >= num_frames:
+                break
+    
+    vidcap.release()
+        
+
         
         
 if __name__ == "__main__":

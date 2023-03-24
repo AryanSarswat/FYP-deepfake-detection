@@ -4,9 +4,9 @@ from einops import rearrange, repeat
 from torch import nn
 from torchsummary import summary
 
-from .layers import PatchEmbedding, ShiftedPatchTokenization
-from .Transformer import Transformer
-from .util import trunc_normal_
+from layers import PatchEmbedding, ShiftedPatchTokenization
+from Transformer import Transformer
+from util import trunc_normal_
 
 
 class ViViT(nn.Module):

@@ -5,7 +5,7 @@ from einops import rearrange, repeat
 from .layers import ReduceSize, SqueezeExcitation
 from .Transformer import Transformer
 from .util import DropPath, trunc_normal_
-
+from torchsummary import summary
 
 def window_partition(x, window_size):
     """
@@ -392,13 +392,13 @@ class GCViViT(nn.Module):
         super().__init__()
         
         self.spatial_transformer = GCViT(
-            depths=GCViT_small_config['depths'],
-            num_heads=GCViT_small_config['num_heads'],
-            window_size=GCViT_small_config['window_size'],
-            dim=GCViT_small_config['dim'],
-            mlp_ratio=GCViT_small_config['mlp_ratio'],
-            drop_path_rate=GCViT_small_config['drop_path_rate'],
-            layer_scale=GCViT_small_config['layer_scale'],
+            depths=GCViT_tiny_config['depths'],
+            num_heads=GCViT_tiny_config['num_heads'],
+            window_size=GCViT_tiny_config['window_size'],
+            dim=GCViT_tiny_config['dim'],
+            mlp_ratio=GCViT_tiny_config['mlp_ratio'],
+            drop_path_rate=GCViT_tiny_config['drop_path_rate'],
+            layer_scale=GCViT_tiny_config['layer_scale'],
             in_chan=in_channels,
         )
         
@@ -409,9 +409,20 @@ class GCViViT(nn.Module):
         
         self.dropout = nn.Dropout(dropout)
         
-        self.head = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, 1),
+        self.spatial_head = nn.Sequential(
+            nn.Linear(dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1),
+        )
+        
+        self.temporal_head = nn.Sequential(
+            nn.Linear(dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1),
         )
         
         # Initialize weights
@@ -423,7 +434,12 @@ class GCViViT(nn.Module):
         # Process spatial dimensions first
         x = x.reshape(B*F, C, H, W)
         x = self.spatial_transformer(x)
-        
+        x = self.dropout(x)
+    
+        spatial_features = x.reshape(B, F, -1)
+        spatial_classification = self.spatial_head(spatial_features)
+        spatial_classification = spatial_classification.reshape(B, F)
+                       
         # Unfold time
         x = x.reshape(B, F, -1)
         cls_token = repeat(self.temporal_cls_token, '() n d -> b n d', b=B)
@@ -434,10 +450,11 @@ class GCViViT(nn.Module):
         x = x[:, 0]
         x = self.dropout(x)
         
-        vectors = x
+        classification_vectors = x
         
-        x = self.head(x)
-        return x, vectors
+        temporal_classification = self.temporal_head(x)
+        
+        return temporal_classification, spatial_classification, classification_vectors
         
 
 GCViT_large_config = {
@@ -491,8 +508,9 @@ def load_model(path, num_frames, in_channels, dim, lsa=False) :
     return model
 
 if __name__ == '__main__':
-    test = torch.randn(2, 3, 3, 224, 224)
-    gcvit = GCViViT(num_frames=3, in_channels=3)
-    #summary(gcvit, (3, 3, 224, 224), device='cpu')
-    out = gcvit(test)
-    print(out.shape)
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    test = torch.randn(2, 3, 6, 224, 224)
+    gcvit = GCViViT(num_frames=3, in_channels=6, dim=512)
+    summary(gcvit, (3, 6, 224, 224), device='cpu')
+    t_cls, s_cls, vectors = gcvit(test)
+    print(t_cls.shape, s_cls.shape, vectors.shape)

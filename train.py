@@ -7,7 +7,7 @@ import torchmetrics.classification as metrics
 import torch.nn as nn
 import torch.optim
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.CvT import create_model
+from models.Pretrained import create_model
 from models.losses import *
 from models.util import DataAugmentationImage, fix_random_seed
 from sklearn.model_selection import train_test_split
@@ -16,7 +16,7 @@ from tqdm import tqdm
 import wandb
 
 # Fix seed for reproducibility
-fix_random_seed(seed=11)
+fix_random_seed(seed=16)
 
 # Optimisations
 torch.backends.cudnn.benchmark = True
@@ -31,18 +31,18 @@ torch.autograd.profiler.profile(False)
 torch.autograd.profiler.emit_nvtx(False)
 
 # Dataset
-PATH_KODF = 'videos_16/data_video.csv'
+PATH_KODF = './KoDF/videos_16/data_video.csv'
 PATH_FACEFORENSICS = './faceforensics/videos_16/data_video.csv' 
-PATH_DFDC = './dfdc/videos_16/test_videos.csv'
+PATH_DFDC = './dfdc/videos_16/data_video.csv'
 PATH_CELEB_DF = './celeb-df/videos_16/data_video.csv'
 IMAGE_SIZE = 224
 NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-RGB = True
+RGB = False
 FFT = False
 DCT = False
-WAVELET = False
+WAVELET = True
 IN_CHANNELS = 3 # Default
 
 assert (RGB ^ FFT ^ DCT ^ WAVELET), "Only one of RGB, FFT or DCT can be True"
@@ -55,25 +55,25 @@ elif WAVELET:
     IN_CHANNELS = 3
 
 # Model
-MODEL_NAME = 'CvT'
-DEPTH = 6
+MODEL_NAME = 'Pretrained GCViViT'
+DEPTH = 8
 DIM = 512
-HEADS = 8
-HEAD_DIM = 256
+HEADS = 16
+HEAD_DIM = 64
 PATCH_SIZE = None
 LSA = True
 DROPOUT = 0.3
 
 # Training 
-WEIGHT = 0.45
-BATCH_SIZE = 16
-LR = 2e-3
-WEIGHT_DECAY = 1e-4
+WEIGHT = 0.4
+BATCH_SIZE = 4
+LR = 1e-3
+WEIGHT_DECAY = 1e-3
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
 NUM_EPOCHS = 20
-LOG_WANDB = True
+LOG_WANDB = False
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
@@ -128,23 +128,31 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metr
     
     model.train()
     epoch_loss = 0
+    epoch_center_loss = 0
     epoch_acc = 0
     idx = 0
     scaler = torch.cuda.amp.GradScaler()
     
     pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Training - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
     
-    for idx, (X, y) in pbar:
+    preds = []
+    targets = []
+    
+    
+    for idx, (X, y_t, y_s) in pbar:
         X = X.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
+        y_t = y_t.to(device, non_blocking=True)
+        y_s = y_s.to(device, non_blocking=True)
         
         
-        with torch.amp.autocast(device_type='cuda', dtype=torch.bfloat16):
-            y_pred, vectors = model(X)
-            loss, center_loss = criteria(y_pred, y, vectors)
-            loss = loss + center_loss
+        y_pred_t, y_pred_s, vectors = model(X)
+        loss_s = criteria(y_pred_s, y_s)
+        loss_t = criteria(y_pred_t, y_t)
+        
+        loss = loss_s + loss_t
             
-        epoch_loss += loss.item()
+        epoch_loss += loss.detach().cpu().item()
+        #epoch_center_loss += center_loss.item()
         
         # Update every other batch simulating gradient accumulation
         if idx % 8 == 0 or idx == len(data_loader) - 1:
@@ -153,28 +161,30 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metr
             scaler.update()
             optimizer.zero_grad(set_to_none=True)
             
-        y_pred = y_pred.detach().cpu()
-        y = y.detach().cpu().int()
+        y_pred_t = y_pred_t.detach().cpu()
+        y_t = y_t.detach().cpu().int()
         
-        epoch_acc += acc_metric(y_pred, y)
-        epoch_precision = precision_metric(y_pred, y)
-        epoch_recall = recall_metric(y_pred, y)
-        epoch_f1 = f1_metric(y_pred, y)
-        epoch_auc = auc_metric(y_pred, y)
+        preds.extend(y_pred_t)
+        targets.extend(y_t)
         
-        
+        epoch_acc += acc_metric(y_pred_t, y_t)
+              
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
     
+    preds = torch.stack(preds)
+    targets = torch.stack(targets)
+    
     train_loss = epoch_loss / (idx + 1)
-    train_acc = acc_metric.compute()
-    train_precision = precision_metric.compute()
-    train_recall = recall_metric.compute()
-    train_f1 = f1_metric.compute()
-    train_auc = auc_metric.compute()
-
+    train_center_loss = epoch_center_loss / (idx + 1)
+    train_acc = acc_metric(preds, targets)
+    train_precision = precision_metric(preds, targets)
+    train_recall = recall_metric(preds, targets)
+    train_f1 = f1_metric(preds, targets)
+    train_auc = auc_metric(preds, targets)
+    
     print(f"Epoch {epoch} Train Loss: {train_loss:.4f} Train Acc: {train_acc:.4f} Train F1: {train_f1:.4f} Train Precision: {train_precision:.4f} Train recall: {train_recall:.4f} Train AUC: {train_auc:.4f}")
 
-    return train_loss, train_acc, train_f1, train_precision, train_recall, train_auc
+    return train_loss, train_acc, train_f1, train_precision, train_recall, train_auc, train_center_loss
 
 @torch.no_grad()
 def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_metric, recall_metric, precision_metric, auc_metric):
@@ -185,45 +195,55 @@ def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_m
     precision_metric.reset()
     auc_metric.reset()
     
+    preds = []
+    targets = []
     
     model.eval()
     epoch_loss = 0
+    epoch_center_loss = 0
     epoch_acc = 0
     idx = 0
     with torch.no_grad():
         pbar = tqdm(enumerate(data_loader), desc=f"Epoch {epoch} Validation - Loss: {epoch_loss:.3f} - Running accuracy: {epoch_acc:.3f}", total=len(data_loader))
         
-        for idx, (X, y) in pbar:
+        for idx, (X, y_t, y_s) in pbar:
             X = X.to(device, non_blocking=True)
-            y = y.to(device, non_blocking=True)
+            y_t = y_t.to(device, non_blocking=True)
+            y_s = y_s.to(device, non_blocking=True)
 
-            y_pred, vectors = model(X)
-            loss, center_loss = criteria(y_pred, y, vectors)
-            loss = loss + center_loss
+            y_pred_t, y_pred_s, vectors = model(X)
+            loss_s = criteria(y_pred_s, y_s)
+            loss_t = criteria(y_pred_t, y_t)
+            loss = loss_s + loss_t
 
             epoch_loss += loss.item()
+            #epoch_center_loss += center_loss.item()
 
-            y_pred = y_pred.detach().cpu()
-            y = y.detach().cpu().int()
+            y_pred_t = y_pred_t.detach().cpu()
+            y_t = y_t.detach().cpu().int()
             
-            epoch_acc += acc_metric(y_pred, y)
-            epoch_precision = precision_metric(y_pred, y)
-            epoch_recall = recall_metric(y_pred, y)
-            epoch_f1 = f1_metric(y_pred, y)
-            epoch_auc = auc_metric(y_pred, y)
+            epoch_acc += acc_metric(y_pred_t, y_t)
+            
+            preds.extend(y_pred_t)
+            targets.extend(y_t)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
 
+
+    preds = torch.stack(preds)
+    targets = torch.stack(targets)
+    
     val_loss = epoch_loss / (idx + 1)
-    val_acc = acc_metric.compute()
-    val_precision = precision_metric.compute()
-    val_recall = recall_metric.compute()
-    val_f1 = f1_metric.compute()
-    val_auc = auc_metric.compute()
+    val_acc = acc_metric(preds, targets)
+    val_precision = precision_metric(preds, targets)
+    val_recall = recall_metric(preds, targets)
+    val_f1 = f1_metric(preds, targets)
+    val_auc = auc_metric(preds, targets)
+    val_center_loss = epoch_center_loss / (idx + 1)
 
     print(f"Epoch {epoch} Validation Loss: {val_loss:.4f} Validation Acc: {val_acc:.4f} Validation F1: {val_f1:.4f} Validation Precision: {val_precision:.4f} Validation recall: {val_recall:.4f}, Validation AUC: {val_auc:.4f}")
 
-    return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc
+    return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc, val_center_loss
 
 def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, patience, min_delta, save_path, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric):
     previous_loss = np.inf
@@ -234,8 +254,8 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
     
     try:
         for epoch in range(epochs):
-            train_loss, train_acc, train_f1, train_precision, train_recall, train_auc = train_epoch(model, train_loader, optimizer, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
-            val_loss, val_acc, val_f1, val_precision, val_recall, val_auc = validate_epoch(model, test_loader, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
+            train_loss, train_acc, train_f1, train_precision, train_recall, train_auc, train_center_loss = train_epoch(model, train_loader, optimizer, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
+            val_loss, val_acc, val_f1, val_precision, val_recall, val_auc, val_center_loss = validate_epoch(model, test_loader, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
             try:
                 wandb.log({
                     "Train Loss": train_loss,
@@ -243,12 +263,14 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
                     "Train F1": train_f1,
                     "Train Precision": train_precision,
                     "Train Recall": train_recall,
+                    "Train Center Loss": train_center_loss,
                     "Train AUC": train_auc,
                     "Val Loss": val_loss,
                     "Val Acc": val_acc,
                     "Val F1": val_f1,
                     "Val Precision": val_precision,
                     "Val Recall": val_recall,
+                    "Val Center Loss": val_center_loss,
                     "Val AUC": val_auc,
                 })
             except Exception as e:
@@ -301,28 +323,32 @@ def inference(model, data_loader, dataset_name, device, acc_metric, precision_me
     f1_metric.reset()
     auc_metric.reset()
     
+    preds = []
+    targets = []
+    
 
-    for idx, (X, y) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
+    for idx, (X, y_t, y_s) in tqdm(enumerate(data_loader), desc=f"Inference", total=len(data_loader)):
         X = X.to(device, non_blocking=True)
-        y = y.to(device, non_blocking=True)
+        y_t = y_t.to(device, non_blocking=True)
+        y_s = y_s.to(device, non_blocking=True)
 
-        y_pred, vectors = model(X)
+        y_pred_t, y_pred_s, vectors = model(X)
         
-        y_pred = y_pred.detach().cpu()
-        y = y.detach().cpu().int()
+        y_pred_t = y_pred_t.detach().cpu()
+        y_t = y_t.detach().cpu().int()
 
         
-        acc = acc_metric(y_pred, y)
-        precision = precision_metric(y_pred, y)
-        recall = recall_metric(y_pred, y)
-        f1 = f1_metric(y_pred, y)
-        auc = auc_metric(y_pred, y)
+        preds.extend(y_pred_t)
+        targets.extend(y_t)
         
-    val_acc = acc_metric.compute()
-    val_precision = precision_metric.compute()
-    val_recall = recall_metric.compute()
-    val_f1 = f1_metric.compute()
-    val_auc = auc_metric.compute()
+    preds = torch.stack(preds)
+    targets = torch.stack(targets)        
+
+    val_acc = acc_metric(preds, targets)
+    val_precision = precision_metric(preds, targets)
+    val_recall = recall_metric(preds, targets)
+    val_f1 = f1_metric(preds, targets)
+    val_auc = auc_metric(preds, targets)
 
     print(f"Test Acc:{val_acc:.4f} Test F1:{val_f1:.4f} Test Precision:{val_precision:.4f} Test Recall:{val_recall:.4f} Test AUC:{val_auc:.4f}")
 
@@ -340,12 +366,20 @@ if __name__ == "__main__":
     faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
     # Initialise model
-    MODEL = create_model(num_frames=NUM_FRAMES, in_channels=IN_CHANNELS, dim=DIM, depth=DEPTH, heads=HEADS, head_dims=HEAD_DIM, lsa=LSA, dropout=DROPOUT)
+    MODEL = create_model(num_frames=NUM_FRAMES, 
+                         in_channels=IN_CHANNELS, 
+                         dim=DIM, 
+                         lsa=LSA, 
+                         depth=DEPTH,
+                         heads=HEADS,
+                         head_dims=HEAD_DIM,
+                         dropout=DROPOUT)
+    
     MODEL = MODEL.to(DEVICE)
     num_parameters = sum(p.numel() for p in MODEL.parameters())
     print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-    OPTIMIZER = torch.optim.AdamW(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    OPTIMIZER = torch.optim.SGD(MODEL.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
     
     # Initialise Metrics
 
@@ -356,8 +390,8 @@ if __name__ == "__main__":
     precision = metrics.BinaryPrecision()
 
     # Initialise loss function
-    CRITERIA = SCLoss(DEVICE, DIM)
-
+    CRITERIA = nn.BCEWithLogitsLoss()
+    
     # Initialise wandb
     wandb_configs = {
         "epochs": NUM_EPOCHS,
@@ -381,7 +415,7 @@ if __name__ == "__main__":
     wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
 
     if LOG_WANDB:
-        wandb.init(project="deepfake-models", config=wandb_configs, name=wandb_configs["experiment_name"])
+        wandb.init(project="deepfake-models-face", config=wandb_configs, name=wandb_configs["experiment_name"])
         wandb.watch(MODEL)
 
     # Train model

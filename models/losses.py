@@ -24,35 +24,28 @@ class weighted_binary_cross_entropy(nn.Module):
             return "{self.weight} Weighted Binary Cross Entropy"
         
 class Focal_Loss(nn.Module):
-    def __init__(self, alpha=0.3, gamma=2, reduction='mean'):
+    def __init__(self, alpha=0.25, gamma=2, reduction='mean'):
         super().__init__()
-        self.alpha = alpha
+        self.alpha = torch.tensor([1 - alpha, alpha]).cuda()
         self.gamma = gamma
         self.reduction = reduction
         
-    def forward(self, output, target):
-        p = torch.sigmoid(output)
-        ce_loss = F.binary_cross_entropy_with_logits(output, target, reduction='none')
-        p_t = p * target + (1 - p) * (1 - target)
-        loss = ce_loss * ((1 - p_t) ** self.gamma)
+    def forward(self, inputs, targets):
+        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        targets = targets.type(torch.long)
+        at = self.alpha.gather(0, targets.data.view(-1))
+        pt = torch.exp(-BCE_loss)
+        F_loss = at*(1-pt)**self.gamma * BCE_loss
+        return F_loss.mean()
 
-        if self.alpha >= 0:
-            alpha_t = self.alpha * target + (1 - self.alpha) * (1 - target)
-            loss = alpha_t * loss
-
-        if self.reduction == 'mean':
-            loss = loss.mean()
-        elif self.reduction == 'sum':
-            loss = loss.sum()
-
-        return loss
-
+    def __repr__(self):
+        return f"Focal Loss with alpha={self.alpha} and gamma={self.gamma}"
 class SCLoss(nn.Module):
     def __init__(self, device, dim, weight=None, use_focal=False):
         super().__init__()
         self.weight = weight
         if weight is not None:
-            self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(output))) + ((1 - target) * torch.log(1 - output))))
+            self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(F.sigmoid(output)))) + ((1 - target) * torch.log(1 - F.sigmoid(output)))))
         elif use_focal:
             self.softmax = Focal_Loss()
         else:
@@ -62,8 +55,8 @@ class SCLoss(nn.Module):
         self.dim = dim
         self.lamb = 0.5
     
-    def forward(self, output, target, vectors):
-        loss = self.softmax(output, target)
+    def forward(self, output_t, output_s, target_t, target_s, vectors):
+        loss_t = self.softmax(output_t, target_t)
         
         real_indexes = torch.where(target == 0)[0]
         fake_indexes = torch.where(target == 1)[0]

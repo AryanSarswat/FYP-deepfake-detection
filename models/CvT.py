@@ -3,8 +3,8 @@ from einops import rearrange, repeat
 from torch import nn
 from torchsummary import summary
 
-from .EfficientNetV2 import create_efficientnetv2_backbone
-from .Transformer import Transformer
+from EfficientNetV2 import create_efficientnetv2_backbone
+from Transformer import Transformer
 
 
 class ConvolutionalVisionTransformer(nn.Module):
