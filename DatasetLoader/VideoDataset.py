@@ -46,18 +46,18 @@ class VideoDataset(Dataset):
         frames = torch.zeros((NUM_FRAMES, NUM_CHANNELS, self.height, self.width))
         
         if self.aug:
-            blur, flip, grey, solarize, color_jitter, rotation, sharpness = self.aug.get_transforms()
+            noise, compression, blur, flip, one_of, grey, shift = self.aug.get_transforms()
         
         for idx in prange(len(files)):
             file_path = os.path.join(path, files[idx])
             if self.aug:
-                frames[idx] = self.read_file(file_path, blur=blur, flip=flip, grey=grey, solarize=solarize, color_jitter=color_jitter, rotation=rotation, sharpness=sharpness)
+                frames[idx] = self.read_file(file_path, noise=noise, compression=compression, blur=blur, flip=flip, one_of=one_of, grey=grey, shift=shift)
             else:
                 frames[idx] = self.read_file(file_path)
         
         return frames
     
-    def read_file(self, file_path, blur=0, flip=0, grey=0, solarize=0):
+    def read_file(self, file_path, noise=0, compression=0, blur=0, flip=0, one_of=0, grey=0, shift=0):
         if self.pickle:
             frame = np.load(os.path.join(file_path))
         else:
@@ -65,7 +65,7 @@ class VideoDataset(Dataset):
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
             if self.aug:
-                frame = self.aug(frame, blur, flip, grey, solarize)
+                frame = self.aug(frame, noise, compression, blur, flip, one_of, grey, shift)
                 frame = frame.numpy()
                 frame = frame.transpose(1,2,0)
             
@@ -102,7 +102,7 @@ def normalize(img):
     img = (img - img.min()) / (img.max() - img.min())
     return img
         
-def img_fast_fourier_transform(img):
+def img_fast_fourier_transform(img):    
     img = cv2.cvtColor(img, cv2.COLOR_RGB2YCR_CB)
     img = np.fft.fftshift(np.fft.fft2(img))
     real = img.real # H X W X C

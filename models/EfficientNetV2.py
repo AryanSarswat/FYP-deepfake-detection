@@ -4,7 +4,7 @@ from collections import OrderedDict
 import torch
 import torch.nn as nn
 
-from layers import ConvBNAct, MBConv
+from .layers import ConvBNAct, MBConv
 
 
 class EfficientNetV2(nn.Module):
@@ -77,7 +77,12 @@ class EfficientNetV2(nn.Module):
                 nn.init.zeros_(m.bias)
                 
     def forward(self, x):
-        return self.head(self.blocks(self.stem(x)))
+        # Convert to images only
+        B, F, C, H, W = x.shape
+        x = x.view(B * F, C, H, W)
+        labels = self.head(self.blocks(self.stem(x)))
+        labels = labels.view(B, -1)
+        return labels
 
 
 EFFICIENTNETV2_S_CONFIG = [
@@ -94,7 +99,7 @@ def create_model():
     model = EfficientNetV2(layer_info=EFFICIENTNETV2_S_CONFIG, num_classes=1)
     return model
 
-def create_efficientnetv2_backbone(in_channels=3):
+def create_efficientnetv2_backbone(in_channels=3, dropout=0.2):
     model = EfficientNetV2(layer_info=EFFICIENTNETV2_S_CONFIG, in_channels=in_channels)
     return model
 
@@ -106,9 +111,9 @@ def load_model(path):
 
 if __name__ == '__main__':
     model = create_model()
-    test = torch.randn(3, 3, 256, 256)
+    test = torch.randn(2, 3, 3, 224, 224)
     result = model(test)
     
-    criterion = nn.BCELoss()
+    criterion = nn.BCEWithLogitsLoss()
     print(result.shape)
-    print(criterion(result, torch.ones(3, 1)))
+    print(criterion(result, torch.ones(6, 1)))

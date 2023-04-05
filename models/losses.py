@@ -40,28 +40,29 @@ class Focal_Loss(nn.Module):
 
     def __repr__(self):
         return f"Focal Loss with alpha={self.alpha} and gamma={self.gamma}"
+    
 class SCLoss(nn.Module):
-    def __init__(self, device, dim, weight=None, use_focal=False):
+    def __init__(self, device, dim, weight=None):
         super().__init__()
         self.weight = weight
         if weight is not None:
             self.softmax = lambda output, target: torch.neg(torch.mean((weight * (target * torch.log(F.sigmoid(output)))) + ((1 - target) * torch.log(1 - F.sigmoid(output)))))
-        elif use_focal:
-            self.softmax = Focal_Loss()
         else:
             self.softmax = nn.BCEWithLogitsLoss()
             
         self.real_center = nn.Parameter(torch.randn(1, dim), requires_grad=True).to(device)
         self.dim = dim
-        self.lamb = 0.5
+        self.lamb = 0.9
+        self.spatial = 0.5
     
     def forward(self, output_t, output_s, target_t, target_s, vectors):
         loss_t = self.softmax(output_t, target_t)
+        loss_s = 0.5 * self.softmax(output_s, target_s)
+        loss = loss_t + loss_s
         
-        real_indexes = torch.where(target == 0)[0]
-        fake_indexes = torch.where(target == 1)[0]
-        
-        
+        real_indexes = torch.where(target_t == 0)[0]
+        fake_indexes = torch.where(target_t == 1)[0]
+
         real_vectors = vectors[real_indexes]
         fake_vectors = vectors[fake_indexes]
         
@@ -69,9 +70,9 @@ class SCLoss(nn.Module):
         m_real = 1 - torch.mean(F.cosine_similarity(real_vectors, self.real_center, dim=1))
         m_fake = torch.mean(F.cosine_similarity(fake_vectors, self.real_center, dim=1))
         
-        if real_indexes.shape[0] == 0:
+        if len(real_indexes) == 0:
             m_real = 0  
-        if fake_indexes.shape[0] == 0:
+        if len(fake_indexes) == 0:
             m_fake = 0
 
         center_loss = m_real + m_fake

@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 import torch.functional as F
 from einops import rearrange, repeat
-from Transformer import Transformer
-from util import trunc_normal_
+from .Transformer import Transformer
+from .util import trunc_normal_
 import timm
 
 class PretrainedGCViViT(nn.Module):
@@ -17,14 +17,14 @@ class PretrainedGCViViT(nn.Module):
             self.spatial_transformer.stem.conv1 = nn.Conv2d(in_channels, 64, kernel_size=(3,3), stride=(2,2), padding=(1,1))
             self.spatial_transformer.stem.conv1.weight = nn.Parameter(torch.stack([torch.mean(weights, 1)]*in_channels, dim=1))            
         
-        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames + 1, dim))
+        self.temporal_embedding = nn.Parameter(torch.randn(1, num_frames, 512))
         self.temporal_cls_token = nn.Parameter(torch.randn(1, 1, dim))
         self.temporal_transformer = Transformer(token_dim=dim, depth=depth, head_dims=head_dims, heads=heads, mlp_dim=dim*scale_dim, dropout=dropout, lsa=lsa)
         
         self.dropout = nn.Dropout(dropout)
         
         self.spatial_head = nn.Sequential(
-            nn.Linear(dim, 512),
+            nn.Linear(512, 512),
             nn.ReLU(),
             nn.Linear(512, 1024),
             nn.ReLU(),
@@ -32,7 +32,7 @@ class PretrainedGCViViT(nn.Module):
         )
         
         self.temporal_head = nn.Sequential(
-            nn.Linear(dim, 512),
+            nn.Linear(512, 512),
             nn.ReLU(),
             nn.Linear(512, 1024),
             nn.ReLU(),
@@ -61,11 +61,10 @@ class PretrainedGCViViT(nn.Module):
         # Unfold time
         x = x.reshape(B, F, -1)
         cls_token = repeat(self.temporal_cls_token, '() n d -> b n d', b=B)
-        x = torch.cat((cls_token, x), dim=1)
+        #x = torch.cat((cls_token, x), dim=1)
         x = x + self.temporal_embedding
         x = self.temporal_transformer(x)
-        # Taking only the cls token
-        x = x[:, 0]
+        x = torch.mean(x[:, 1:], dim=1)
         x = self.dropout(x)
         
         classification_vectors = x

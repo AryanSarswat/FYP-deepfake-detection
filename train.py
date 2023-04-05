@@ -7,11 +7,12 @@ import torchmetrics.classification as metrics
 import torch.nn as nn
 import torch.optim
 from DatasetLoader.VideoDataset import DataLoaderWrapper
-from models.Pretrained import create_model
+from models.EfficientNetV2 import create_model
 from models.losses import *
 from models.util import DataAugmentationImage, fix_random_seed
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+import os
 
 import wandb
 
@@ -39,10 +40,10 @@ IMAGE_SIZE = 224
 NUM_FRAMES = 16
 AUGMENTATIONS = DataAugmentationImage(size=IMAGE_SIZE)
 
-RGB = False
+RGB = True
 FFT = False
 DCT = False
-WAVELET = True
+WAVELET = False
 IN_CHANNELS = 3 # Default
 
 assert (RGB ^ FFT ^ DCT ^ WAVELET), "Only one of RGB, FFT or DCT can be True"
@@ -55,25 +56,25 @@ elif WAVELET:
     IN_CHANNELS = 3
 
 # Model
-MODEL_NAME = 'Pretrained GCViViT'
+MODEL_NAME = 'Baseline'
 DEPTH = 8
 DIM = 512
-HEADS = 16
+HEADS = 8
 HEAD_DIM = 64
 PATCH_SIZE = None
 LSA = True
-DROPOUT = 0.3
+DROPOUT = 0.4
 
 # Training 
 WEIGHT = 0.4
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 LR = 1e-3
-WEIGHT_DECAY = 1e-3
+WEIGHT_DECAY = 1e-2
 MOMENTUM = 0.7
 PATIENCE = 5
 MIN_DELTA = 1e-3
-NUM_EPOCHS = 20
-LOG_WANDB = False
+NUM_EPOCHS = 50
+LOG_WANDB = True
 DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {DEVICE}")
 
@@ -145,30 +146,37 @@ def train_epoch(model, data_loader, optimizer, criteria, epoch, device, acc_metr
         y_s = y_s.to(device, non_blocking=True)
         
         
-        y_pred_t, y_pred_s, vectors = model(X)
-        loss_s = criteria(y_pred_s, y_s)
-        loss_t = criteria(y_pred_t, y_t)
+        #y_pred_t, y_pred_s, vectors = model(X)
+        y_pred_t = model(X)
         
-        loss = loss_s + loss_t
-            
-        epoch_loss += loss.detach().cpu().item()
-        #epoch_center_loss += center_loss.item()
-        
-        # Update every other batch simulating gradient accumulation
-        if idx % 8 == 0 or idx == len(data_loader) - 1:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+        #loss, center_loss = criteria(y_pred_t, y_pred_s, y_t, y_s, vectors)
+        loss = criteria(y_pred_t, y_s)
+        total_loss = loss
+        total_loss = torch.clamp(total_loss, -5, 5)
+
+        if total_loss.isnan().any():
+            print("Nan loss, skipping")
             optimizer.zero_grad(set_to_none=True)
+            continue
+        else:
+            epoch_loss += loss.detach().cpu().item()
+            #epoch_center_loss += center_loss.item()
             
-        y_pred_t = y_pred_t.detach().cpu()
-        y_t = y_t.detach().cpu().int()
-        
-        preds.extend(y_pred_t)
-        targets.extend(y_t)
-        
-        epoch_acc += acc_metric(y_pred_t, y_t)
-              
+            # Update every other batch simulating gradient accumulation
+            if idx % 2 == 0 or idx == len(data_loader) - 1:
+                total_loss.backward()
+                nn.utils.clip_grad_norm_(model.parameters(), 5.0)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                
+            y_pred_t = y_pred_t.detach().cpu()
+            y_t = y_s.detach().cpu().int()
+            
+            preds.extend(y_pred_t)
+            targets.extend(y_t)
+            
+            epoch_acc += acc_metric(y_pred_t, y_t)
+                
         pbar.set_description(f"Epoch {epoch} Train - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
     
     preds = torch.stack(preds)
@@ -211,16 +219,17 @@ def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_m
             y_t = y_t.to(device, non_blocking=True)
             y_s = y_s.to(device, non_blocking=True)
 
-            y_pred_t, y_pred_s, vectors = model(X)
-            loss_s = criteria(y_pred_s, y_s)
-            loss_t = criteria(y_pred_t, y_t)
-            loss = loss_s + loss_t
-
+            #y_pred_t, y_pred_s, vectors = model(X)
+            y_pred_t = model(X)
+            
+            #loss, center_loss = criteria(y_pred_t, y_pred_s, y_t, y_s, vectors)
+            loss = criteria(y_pred_t, y_s)
+            
             epoch_loss += loss.item()
             #epoch_center_loss += center_loss.item()
 
             y_pred_t = y_pred_t.detach().cpu()
-            y_t = y_t.detach().cpu().int()
+            y_t = y_s.detach().cpu().int()
             
             epoch_acc += acc_metric(y_pred_t, y_t)
             
@@ -228,7 +237,6 @@ def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_m
             targets.extend(y_t)
             
             pbar.set_description(f"Epoch {epoch} Validation - Loss: {epoch_loss / (idx + 1):.3f} - Running accuracy: {epoch_acc / (idx + 1):.3f}")
-
 
     preds = torch.stack(preds)
     targets = torch.stack(targets)
@@ -245,7 +253,7 @@ def validate_epoch(model, data_loader, criteria, epoch, device, acc_metric, f1_m
 
     return val_loss, val_acc, val_f1, val_precision, val_recall, val_auc, val_center_loss
 
-def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, patience, min_delta, save_path, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric):
+def train_model(model, train_loader, test_loader, optimizer, scheduler, criteria, epochs, patience, min_delta, save_path, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric):
     previous_loss = np.inf
     patience_counter = 0
 
@@ -256,6 +264,7 @@ def train_model(model, train_loader, test_loader, optimizer, criteria, epochs, p
         for epoch in range(epochs):
             train_loss, train_acc, train_f1, train_precision, train_recall, train_auc, train_center_loss = train_epoch(model, train_loader, optimizer, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
             val_loss, val_acc, val_f1, val_precision, val_recall, val_auc, val_center_loss = validate_epoch(model, test_loader, criteria, epoch, device, acc_metric, precision_metric, recall_metric, f1_metric, auc_metric)
+            scheduler.step(val_loss)
             try:
                 wandb.log({
                     "Train Loss": train_loss,
@@ -332,10 +341,11 @@ def inference(model, data_loader, dataset_name, device, acc_metric, precision_me
         y_t = y_t.to(device, non_blocking=True)
         y_s = y_s.to(device, non_blocking=True)
 
-        y_pred_t, y_pred_s, vectors = model(X)
+        #y_pred_t, y_pred_s, vectors = model(X)
+        y_pred_t = model(X)
         
         y_pred_t = y_pred_t.detach().cpu()
-        y_t = y_t.detach().cpu().int()
+        y_t = y_s.detach().cpu().int()
 
         
         preds.extend(y_pred_t)
@@ -366,20 +376,21 @@ if __name__ == "__main__":
     faceforensics_loader = get_dataset(PATH_FACEFORENSICS, training=False)
 
     # Initialise model
-    MODEL = create_model(num_frames=NUM_FRAMES, 
-                         in_channels=IN_CHANNELS, 
-                         dim=DIM, 
-                         lsa=LSA, 
-                         depth=DEPTH,
-                         heads=HEADS,
-                         head_dims=HEAD_DIM,
-                         dropout=DROPOUT)
+    MODEL = create_model(#num_frames=NUM_FRAMES, 
+                         #in_channels=IN_CHANNELS, 
+                         #dim=DIM, 
+                         #lsa=LSA, 
+                         #depth=DEPTH,
+                         #heads=HEADS,
+                         #head_dims=HEAD_DIM,
+    )#dropout=DROPOUT)
     
     MODEL = MODEL.to(DEVICE)
     num_parameters = sum(p.numel() for p in MODEL.parameters())
     print(f"[INFO] Number of parameters in model : {num_parameters:,}")
 
-    OPTIMIZER = torch.optim.SGD(MODEL.parameters(), lr=LR, momentum=MOMENTUM, weight_decay=WEIGHT_DECAY)
+    OPTIMIZER = torch.optim.AdamW(MODEL.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
+    SCHEDULER = torch.optim.lr_scheduler.ReduceLROnPlateau(OPTIMIZER, mode='min', factor=0.1, patience=3, verbose=True)
     
     # Initialise Metrics
 
@@ -415,11 +426,11 @@ if __name__ == "__main__":
     wandb_configs["experiment_name"] = f"{wandb_configs['architecture']}_frames_{wandb_configs['num_frames']}_batch_{wandb_configs['batch_size']}_lr_{wandb_configs['lr']}_loss_{CRITERIA}"
 
     if LOG_WANDB:
-        wandb.init(project="deepfake-models-face", config=wandb_configs, name=wandb_configs["experiment_name"])
+        wandb.init(project="deepfake-models-face-abalation", config=wandb_configs, name=wandb_configs["experiment_name"])
         wandb.watch(MODEL)
 
     # Train model
-    MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE, acc_metric=accuracy, auc_metric=auroc, f1_metric=f1, recall_metric=recall, precision_metric=precision)
+    MODEL = train_model(MODEL, train_loader, test_loader, OPTIMIZER, SCHEDULER, CRITERIA, NUM_EPOCHS, PATIENCE, MIN_DELTA, SAVE_PATH, DEVICE, acc_metric=accuracy, auc_metric=auroc, f1_metric=f1, recall_metric=recall, precision_metric=precision)
 
     # Inference
     inference(model=MODEL, data_loader=dfdc_loader, dataset_name="DFDC", device=DEVICE, acc_metric=accuracy, precision_metric=precision, recall_metric=recall, f1_metric=f1, auc_metric=auroc)

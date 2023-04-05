@@ -3,8 +3,8 @@ from einops import rearrange, repeat
 from torch import nn
 from torchsummary import summary
 
-from EfficientNetV2 import create_efficientnetv2_backbone
-from Transformer import Transformer
+import torchvision
+from .Transformer import Transformer
 
 
 class ConvolutionalVisionTransformer(nn.Module):
@@ -30,7 +30,15 @@ class ConvolutionalVisionTransformer(nn.Module):
         super(ConvolutionalVisionTransformer, self).__init__()
         
         # EfficientNet style Convolution to extract features from frames
-        self.efficientnet_backbone = create_efficientnetv2_backbone(in_channels=in_channels)
+        self.efficientnet_backbone = torchvision.models.efficientnet_v2_m(weights="IMAGENET1K_V1")
+        self.efficientnet_backbone.classifier = nn.Identity()
+        
+        if in_channels != 3:
+            self.efficientnet_backbone.features[0] = nn.Sequential(
+                nn.Conv2d(in_channels, 24, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False),
+                nn.BatchNorm2d(24, eps=0.001, momentum=0.1, affine=True, track_running_stats=True),
+                nn.SiLU(inplace=True),                
+            )
         
         self.fc = nn.Linear(1280, t_dim)
     
@@ -42,6 +50,22 @@ class ConvolutionalVisionTransformer(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
         self.norm = nn.LayerNorm(t_dim)
+        
+        self.spatial_head = nn.Sequential(
+            nn.Linear(1280, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1),
+        )
+        
+        self.temporal_head = nn.Sequential(
+            nn.Linear(t_dim, 512),
+            nn.ReLU(),
+            nn.Linear(512, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 1),
+        )
         
         self.classifier = nn.Sequential(
             nn.Linear(t_dim, 1),
@@ -56,6 +80,10 @@ class ConvolutionalVisionTransformer(nn.Module):
         
         x = self.efficientnet_backbone(x)
         
+        
+        spatial_classification = self.spatial_head(x)
+        spatial_classification = spatial_classification.view(b, t)
+        
         # Map to token dimension
         x = self.fc(x)
         
@@ -69,11 +97,13 @@ class ConvolutionalVisionTransformer(nn.Module):
         x = self.temporal_transformer(x)
         
         # Take only the cls_temporal_token
-        x = self.norm(x[:,0])
+        x = self.norm(torch.mean(x, dim=1))
         
         vectors = x
         
-        return self.classifier(x), vectors
+        temporal_classification = self.temporal_head(x)
+        
+        return temporal_classification, spatial_classification, vectors
         
 def create_model(num_frames, dim=192, depth=4, heads=3, head_dims=64, dropout=0., scale_dim=4, lsa=False, in_channels=3):
     return ConvolutionalVisionTransformer(num_frames=num_frames, 
@@ -89,14 +119,16 @@ def load_model(base_model, weights_path):
         
         
 if __name__ == '__main__':
-    HEIGHT = 256
-    WIDTH = 256
-    NUM_FRAMES = 32
+    HEIGHT = 224
+    WIDTH = 224
+    NUM_FRAMES = 16
     
     test = torch.randn(2, NUM_FRAMES, 3, HEIGHT, WIDTH).cuda()
     model = create_model(num_frames=NUM_FRAMES).cuda()
-    result = model(test)
-    print(f"Shape of output : {result.shape}")
+    temporal, spatial, vectors = model(test)
+    print(temporal.shape)
+    print(spatial.shape)
+    print(vectors.shape)
     print(f"Number of parameters : {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
     print(summary(model, (NUM_FRAMES, 3, HEIGHT, WIDTH), device='cuda'))
     

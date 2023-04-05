@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.transforms.functional as F
-from torchvision import transforms
+import torchvision
+from albumentations import *
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -136,250 +137,41 @@ def resized_crop(clip, i, j, h, w, size, interpolation_mode="bilinear"):
     return clip
 
 # Transformations
-
-class RandomHorizontalFlipVideo(object):
-    def __init__(self, p):
-        self.prob = p
-    
-    def __call__(self, clips):
-        if np.random.random() < self.prob:
-            return [clip.transpose(PIL.Image.FLIP_LEFT_RIGHT) for clip in clips]
-        else:
-            return clips
-    
-class RandomGrayScaleVideo(object):
-    def __init__(self, p):
-        self.prob = p
-    
-    def __call__(self, clips):
-        if np.random.random() < self.prob:
-            return [clip.convert('L') for clip in clips]
-        else:
-            return clips
-class RandomColorJitterVideo(object):
-    def __init__(self, brightness, contrast, saturation, hue):
-        self.brightness = brightness
-        self.contrast = contrast
-        self.saturation = saturation
-        self.hue = hue
-        
-    def get_params(self, brightness, contrast, saturation, hue):
-        if brightness > 0:
-            brightness_factor = np.random.uniform(max(0, 1 - brightness), 1 + brightness)
-        else:
-            brightness_factor = None
-        
-        if contrast > 0:
-            contrast_factor = np.random.uniform(max(0, 1 - contrast), 1 + contrast)
-        else:
-            contrast_factor = None
-        
-        if saturation > 0:
-            saturation_factor = np.random.uniform(max(0, 1 - saturation), 1 + saturation)
-        else:
-            saturation_factor = None
-        
-        if hue > 0:
-            hue_factor = np.random.uniform(-hue, hue)
-        else:
-            hue_factor = None
-        
-        return brightness_factor, contrast_factor, saturation_factor, hue_factor
-    
-    def __call__(self, clip):
-        transforms = []
-        
-        brightness_factor, contrast_factor, saturation_factor, hue_factor = self.get_params(self.brightness, self.contrast, self.saturation, self.hue)
-        
-        if brightness_factor is not None:
-            transforms.append(lambda x: F.adjust_brightness(x, brightness_factor))
-        if contrast_factor is not None:
-            transforms.append(lambda x: F.adjust_contrast(x, contrast_factor))
-        if saturation_factor is not None:
-            transforms.append(lambda x: F.adjust_saturation(x, saturation_factor))
-        if hue_factor is not None:
-            transforms.append(lambda x: F.adjust_hue(x, hue_factor))
-            
-        np.random.shuffle(transforms)
-        
-        jittered_clip = []
-        for frame in clip:
-            for transform in transforms:
-                frame = transform(frame)
-            jittered_clip.append(frame)
-        
-        return jittered_clip
-
-class NormalizeVideo(object):
-    def __init__(self, mean, std) -> None:
-        self.mean = mean
-        self.std = std
-    
-    def __call__(self, clip):
-        mean = torch.as_tensor(self.mean, dtype=torch.float32)
-        std = torch.as_tensor(self.std, dtype=torch.float32)
-        
-        if clip[0].shape[0] == 1:
-            clip = [torch.concatenate([frame, frame, frame]) for frame in clip]
-        
-        
-        return [F.normalize(frame, self.mean,  self.std) for frame in clip]
-
-class RandomGaussianBlurVideo(object):
-    def __init__(self, p):
-        self.prob = p
-        self.kernel_size = 5
-        
-    def __call__(self, clips):
-        if np.random.random() < self.prob:
-            return [clip.filter(PIL.ImageFilter.GaussianBlur(radius=self.kernel_size)) for clip in clips]
-
-flip_and_jitter = transforms.Compose(
-    [
-        RandomHorizontalFlipVideo(p=1),
-        RandomColorJitterVideo(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-        RandomGrayScaleVideo(p=1),
-    ]
-)
-
-normalize = transforms.Compose(
-    [
-        NormalizeVideo(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ]
-)
-
-class RandomResizedCropVideo(transforms.RandomResizedCrop):
-    def __init__(
-        self,
-        size: int,
-        scale: tuple=(0.08, 1.0),
-        ratio=(3.0 / 4.0, 4.0 / 3.0),
-        interpolation_mode="bilinear",
-    ):
-        if isinstance(size, tuple):
-            assert len(size) == 2, "size should be tuple (height, width)"
-            self.size = size
-        else:
-            self.size = (size, size)
-
-        self.interpolation_mode = interpolation_mode
-        self.scale = scale
-        self.ratio = ratio
-        
-    def get_params(self, clips, scale, ratio):
-        height, width = clips[0].size
-
-        for _ in range(10):
-            target_area = np.random.uniform(*scale) * height * width
-            log_ratio = (math.log(ratio[0]), math.log(ratio[1]))
-            aspect_ratio = math.exp(np.random.uniform(*log_ratio))
-            
-            w = int(round(math.sqrt(target_area * aspect_ratio)))
-            h = int(round(math.sqrt(target_area / aspect_ratio)))
-            
-            if 0 < w < width and 0 < h < height:
-                i = np.random.randint(0, height - h)
-                j = np.random.randint(0, width - w)
-                return i, j, h, w
-        
-        in_ratio = float(width) / float(height)
-        if (in_ratio < min(ratio)):
-            w = width
-            h = int(round(w / min(ratio)))
-        elif (in_ratio > max(ratio)):
-            h = height
-            w = int(round(h * max(ratio)))
-        else:
-            w = width
-            h = height
-        i = (height - h) // 2
-        j = (width - w) // 2
-        
-        return i, j , h, w
-        
-    def __call__(self, clip):
-        """
-        Args:
-            clip (torch.tensor): Video clip to be cropped. Size is (C, T, H, W)
-        Returns:
-            torch.tensor: randomly cropped/resized video clip.
-                size is (C, T, H, W)
-        """
-        i, j, h, w = self.get_params(clip, self.scale, self.ratio)
-        cropped = [img.crop((j, i, j + w, i + w)) for img in clip]
-        resized = [img.resize(self.size, PIL.Image.NEAREST if self.interpolation_mode == 'bilinear' else PIL.Image.BILINEAR) for img in cropped]
-        return resized
-
-    def __repr__(self):
-        return self.__class__.__name__ + \
-            '(size={0}, interpolation_mode={1}, scale={2}, ratio={3})'.format(
-                self.size, self.interpolation_mode, self.scale, self.ratio
-            )
-
-class RandomSolarizeVideo(object):
-    def __init__(self, p=0.5, threshold=128):
-        self.p = p
-        self.threshold = threshold
-        
-    def __call__(self, clip):
-        if np.random.random() < self.p:
-            return [F.solarize(img, self.threshold) for img in clip]
-        return clip
-
-class PILToTensorVideo(object):
-    def __init__(self):
-        self.transforms = transforms.ToTensor()
-    
-    def __call__(self, clip):
-        return [self.transforms(img) for img in clip]
-
-class TensorToPIL(object):
-    def __call__(self, clip):
-        
-        return [PIL.Image.fromarray(img.numpy().astype(np.uint8).transpose(1,2,0)) for img in clip]
-    
 class DataAugmentationImage:
-    def __init__(self, frame_crop_scale: tuple = (0.9, 0.3), 
-                       global_crops_scale: tuple = (0.4, 1), 
-                       local_crops_scale: tuple = (0.05, 0.4), 
-                       n_local_crops: int = 8, size: int = 224):
+    def __init__(self, size: int = 224):
         
-        self.gaussian_blur = transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0))
-        
-        self.random_rotation = transforms.RandomRotation(degrees=30, p=1)
-        self.horizontal_flip = transforms.RandomHorizontalFlip(p=1)
-        self.color_jitter = transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2)
-        self.grey_scale = transforms.RandomGrayscale(p=1)
-        self.sharpness = transforms.RandomSharpness(sharpness_factor=0.4, p=1)
+        self.gaussian_noise = GaussNoise(p=1)
+        self.image_compression = ImageCompression(quality_lower=60, quality_upper=100, p=1)
+        self.GaussianBlur = GaussianBlur(blur_limit=3, p=1)
+        self.HorizontalFlip = HorizontalFlip()
+        self.one_of = [RandomBrightnessContrast(p=1), FancyPCA(p=1), HueSaturationValue(p=1)]
+        self.grey_scale = ToGray(p=1)
+        self.shift_scale_rotate = ShiftScaleRotate(shift_limit=0.1, scale_limit=0.2, rotate_limit=10, border_mode=cv2.BORDER_CONSTANT, p=1)
 
-        self.normalize = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-            ]
-        )
+        self.normalize = torchvision.transforms.ToTensor()
         
-        self.solarize = transforms.RandomSolarize(170, p=1)
         
     def get_transforms(self):
-        blur = 1 if np.random.random() < 0.25 else 0
+        noise = 1 if np.random.random() < 0.1 else 0
+        compression = 1 if np.random.random() < 0.5 else 0
+        blur = 1 if np.random.random() < 0.05 else 0
         flip = 1 if np.random.random() < 0.5 else 0
+        one_of = [np.random.random() for _ in range(3)]
+        one_of = np.argmax(one_of)
         grey = 1 if np.random.random() < 0.2 else 0
-        color_jitter = 1 if np.random.random() < 0.5 else 0
-        rotation = 1 if np.random.random() < 0.3 else 0
-        solarize = 1 if np.random.random() < 0.1 else 0
-        sharpness = 1 if np.random.random() < 0.25 else 0
-        return blur, flip, grey, solarize, color_jitter, rotation, sharpness
+        shift = 1 if np.random.random() < 0.5 else 0
+        return noise, compression, blur, flip, one_of, grey, shift
     
-    def __call__(self, img, blur, flip, grey, solarize, color_jitter, rotation, sharpness):
-        img = PIL.Image.fromarray(img.astype(np.uint8))
-        img = self.gaussian_blur(img) if blur == 1 else img
-        img = self.horizontal_flip(img) if flip == 1 else img
-        img = self.color_jitter(img) if color_jitter == 1 else img
-        img = self.random_rotation(img) if rotation == 1 else img
-        img = self.sharpness(img) if sharpness == 1 else img
-        #img = self.grey_scale(img) if grey == 1 else img
-        img = self.solarize(img) if solarize == 1 else img
+    def __call__(self, img, noise, compression, blur, flip, one_of, grey, shift):
+        #img = PIL.Image.fromarray(img.astype(np.uint8))
+        img = self.gaussian_noise(image=img)['image'] if noise == 1 else img
+        img = self.image_compression(image=img)['image'] if compression == 1 else img
+        img = self.GaussianBlur(image=img)['image'] if blur == 1 else img
+        img = self.HorizontalFlip(image=img)['image'] if flip == 1 else img
+        inter = self.one_of[one_of]
+        img = inter(image=img)['image']
+        img = self.grey_scale(image=img)['image'] if grey == 1 else img
+        img = self.shift_scale_rotate(image=img)['image'] if shift == 1 else img
         img = self.normalize(img)
         
         return img
